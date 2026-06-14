@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Sun, 14 Jun 2026 20:02:56 +0000
+Subject: [PATCH] fix(docker): pin current npm tooling
+
+
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index 49ee0964..a2209b2b 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -17,6 +17,8 @@ ARG TARGETARCH
+ ARG S6_OVERLAY_VERSION=3.2.0.2
+ # Paseo version to install from npm. Defaults to latest; CI pins to the release version.
+ ARG PASEO_VERSION=latest
++ARG NPM_VERSION=11.17.0
++ARG COREPACK_VERSION=0.35.0
+ ARG PNPM_VERSION=11.6.0
+ ARG UV_VERSION=0.11.21
+ # Runtime user for the daemon. The default preserves the standard non-root
+@@ -43,7 +45,7 @@ ENV HOME=/home/paseo \
+ 
+ # Base runtime deps + Node 24 LTS (family-detected inside the script).
+ COPY scripts/install-base.sh /tmp/install-base.sh
+-RUN PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER}" PNPM_VERSION="${PNPM_VERSION}" UV_VERSION="${UV_VERSION}" /tmp/install-base.sh && rm -f /tmp/install-base.sh
++RUN PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER}" NPM_VERSION="${NPM_VERSION}" COREPACK_VERSION="${COREPACK_VERSION}" PNPM_VERSION="${PNPM_VERSION}" UV_VERSION="${UV_VERSION}" /tmp/install-base.sh && rm -f /tmp/install-base.sh
+ 
+ # s6-overlay v3 (process supervisor + PID 1).
+ RUN set -eux; \
+diff --git a/docker/base/scripts/install-base.sh b/docker/base/scripts/install-base.sh
+index cb99c835..11089639 100755
+--- a/docker/base/scripts/install-base.sh
++++ b/docker/base/scripts/install-base.sh
+@@ -34,7 +34,10 @@ install_node_tarball() {
+ }
+ 
+ install_node_tooling() {
++  npm_version="${NPM_VERSION:-11.17.0}"
++  corepack_version="${COREPACK_VERSION:-0.35.0}"
+   pnpm_version="${PNPM_VERSION:-11.6.0}"
++  npm install -g "npm@${npm_version}" "corepack@${corepack_version}"
+   corepack enable
+   corepack prepare "pnpm@${pnpm_version}" --activate
+ }
