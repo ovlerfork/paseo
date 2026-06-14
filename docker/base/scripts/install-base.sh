@@ -37,6 +37,7 @@ if command -v apk >/dev/null 2>&1; then
   # Alpine. nodejs/npm come from the distro repos (Alpine 3.21+ ships Node 22).
   apk add --no-cache \
     bash \
+    bubblewrap \
     bzip2 \
     ca-certificates \
     curl \
@@ -57,6 +58,7 @@ elif command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y --no-install-recommends \
+    bubblewrap \
     bzip2 \
     ca-certificates \
     curl \
@@ -77,6 +79,7 @@ elif command -v pacman >/dev/null 2>&1; then
   # under qemu emulation (amd64-on-arm64 local builds); pointless in an
   # ephemeral image build anyway.
   pacman -Syu --noconfirm --needed --disable-sandbox \
+    bubblewrap \
     ca-certificates \
     curl \
     git \
