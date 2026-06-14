@@ -14,7 +14,7 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 
 ## Current patch series
 
-The current series imports Docker support and Docker publishing/build automation for the Paseo daemon and agent Docker Mods.
+The current series imports Docker support and Docker publishing/build automation for the Paseo daemon and agent Docker Mods. It also installs `bubblewrap` in the base Docker images so Linux Codex sandboxing works reliably inside Paseo containers.
 
 ## Apply locally
 
