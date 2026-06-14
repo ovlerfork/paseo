@@ -4,37 +4,6 @@ Date: Sun, 14 Jun 2026 16:50:10 +0000
 Subject: [PATCH] fix(docker): add Ubuntu sandbox image variant
 
 
-diff --git a/.github/workflows/docker.yml b/.github/workflows/docker.yml
-index 6cfff75f..82db750f 100644
---- a/.github/workflows/docker.yml
-+++ b/.github/workflows/docker.yml
-@@ -75,6 +75,10 @@ jobs:
-           - name: ubuntu2404
-             base: ubuntu:24.04
-             moving: ubuntu
-+          - name: ubuntu-sandbox
-+            base: ubuntu:24.04
-+            moving: ubuntu-sandbox
-+            runtime_user: root
-           - name: ubuntu2204
-             base: ubuntu:22.04
-           - name: alpine
-@@ -134,6 +138,7 @@ jobs:
-           build-args: |
-             BASE_IMAGE=${{ matrix.base }}
-             PASEO_VERSION=${{ needs.setup.outputs.version }}
-+            PASEO_RUNTIME_USER=${{ matrix.runtime_user || 'paseo' }}
-           tags: ${{ steps.tags.outputs.tags }}
-           push: ${{ needs.setup.outputs.push == 'true' }}
-           provenance: false
-@@ -162,6 +167,7 @@ jobs:
-             "${tag_args[@]}" \
-             --build-arg "BASE_IMAGE=${ARCH_BASE_IMAGE}" \
-             --build-arg "PASEO_VERSION=${RESOLVED_VERSION}" \
-+            --build-arg "PASEO_RUNTIME_USER=paseo" \
-             docker/base
- 
-           if [[ "${SHOULD_PUSH}" == "true" ]]; then
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
 index 7d42ce34..2b67e2ac 100644
 --- a/docker/base/Dockerfile
