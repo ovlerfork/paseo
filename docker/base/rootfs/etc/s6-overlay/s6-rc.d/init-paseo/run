@@ -1,24 +1,40 @@
 #!/command/with-contenv bash
-# Seed PASEO_HOME and align the paseo user with the host volume owner.
+# Seed PASEO_HOME and align the runtime home with the selected container user.
 set -euo pipefail
 
+PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER:-paseo}"
 PUID="${PUID:-911}"
 PGID="${PGID:-911}"
 
-if [[ "$(id -g paseo)" != "$PGID" ]]; then
-  groupmod -o -g "$PGID" paseo || true
-fi
-if [[ "$(id -u paseo)" != "$PUID" ]]; then
-  usermod -o -u "$PUID" paseo || true
+case "$PASEO_RUNTIME_USER" in
+  paseo | root) ;;
+  *)
+    echo "[init] Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}; expected paseo or root." >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+  if [[ "$(id -g paseo)" != "$PGID" ]]; then
+    groupmod -o -g "$PGID" paseo || true
+  fi
+  if [[ "$(id -u paseo)" != "$PUID" ]]; then
+    usermod -o -u "$PUID" paseo || true
+  fi
 fi
 
 SUDOERS_FILE="/etc/sudoers.d/paseo-enable-sudo"
 case "$(printf '%s' "${PASEO_ENABLE_SUDO:-}" | tr '[:upper:]' '[:lower:]')" in
   true)
     mkdir -p /etc/sudoers.d
-    printf 'paseo ALL=(ALL) NOPASSWD:ALL\n' > "$SUDOERS_FILE"
-    chmod 0440 "$SUDOERS_FILE"
-    echo "[init] PASEO_ENABLE_SUDO enabled: passwordless sudo granted to paseo."
+    if [[ "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+      printf 'paseo ALL=(ALL) NOPASSWD:ALL\n' > "$SUDOERS_FILE"
+      chmod 0440 "$SUDOERS_FILE"
+      echo "[init] PASEO_ENABLE_SUDO enabled: passwordless sudo granted to paseo."
+    else
+      rm -f "$SUDOERS_FILE"
+      echo "[init] PASEO_ENABLE_SUDO ignored: runtime already runs as root."
+    fi
     ;;
   *)
     rm -f "$SUDOERS_FILE"
@@ -28,11 +44,20 @@ esac
 
 IMAGE_DEFAULT_HOME="/home/paseo"
 IMAGE_DEFAULT_PASEO_HOME="${IMAGE_DEFAULT_HOME}/.paseo"
-CONTAINER_HOME="${HOME:-$IMAGE_DEFAULT_HOME}"
+if [[ "$PASEO_RUNTIME_USER" == "root" && "${HOME:-$IMAGE_DEFAULT_HOME}" == "$IMAGE_DEFAULT_HOME" ]]; then
+  CONTAINER_HOME="/root"
+else
+  CONTAINER_HOME="${HOME:-$IMAGE_DEFAULT_HOME}"
+fi
 if [[ -z "${PASEO_HOME:-}" || ( "$CONTAINER_HOME" != "$IMAGE_DEFAULT_HOME" && "${PASEO_HOME:-}" == "$IMAGE_DEFAULT_PASEO_HOME" ) ]]; then
   PASEO_HOME="${CONTAINER_HOME}/.paseo"
 fi
-usermod -d "$CONTAINER_HOME" paseo || true
+export HOME="$CONTAINER_HOME"
+export PASEO_HOME
+
+if [[ "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+  usermod -d "$CONTAINER_HOME" paseo || true
+fi
 
 home_scoped_dir() {
   local name="$1"
@@ -51,14 +76,18 @@ home_scoped_dir XDG_DATA_HOME "/.local/share"
 home_scoped_dir XDG_STATE_HOME "/.local/state"
 home_scoped_dir XDG_CACHE_HOME "/.cache"
 
-ensure_owned_dir() {
+ensure_runtime_dir() {
   local dir="$1"
   local mode="${2:-700}"
   if [[ -z "$dir" ]]; then
     return 0
   fi
   mkdir -p "$dir"
-  chown paseo:paseo "$dir" || true
+  if [[ "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+    chown paseo:paseo "$dir" || true
+  else
+    chown root:root "$dir" || true
+  fi
   chmod "$mode" "$dir" || true
 }
 
@@ -70,21 +99,25 @@ ensure_owned_parent_dir() {
   local parent
   parent="$(dirname "$dir")"
   if [[ "$parent" == "$CONTAINER_HOME" || "$parent" == "$CONTAINER_HOME"/* ]]; then
-    ensure_owned_dir "$parent" 700
+    ensure_runtime_dir "$parent" 700
   fi
 }
 
 # Only chown directory entries, not their contents; avoid clobbering large
 # bind-mounted homes while still making the expected roots writable.
-ensure_owned_dir "$CONTAINER_HOME" 700
-ensure_owned_dir "$PASEO_HOME" 700
-ensure_owned_dir "$CLAUDE_CONFIG_DIR" 700
-ensure_owned_dir "$CODEX_HOME" 700
-ensure_owned_dir "$XDG_CONFIG_HOME" 700
+ensure_runtime_dir "$CONTAINER_HOME" 700
+ensure_runtime_dir "$PASEO_HOME" 700
+ensure_runtime_dir "$CLAUDE_CONFIG_DIR" 700
+ensure_runtime_dir "$CODEX_HOME" 700
+ensure_runtime_dir "$XDG_CONFIG_HOME" 700
 ensure_owned_parent_dir "$XDG_DATA_HOME"
-ensure_owned_dir "$XDG_DATA_HOME" 700
+ensure_runtime_dir "$XDG_DATA_HOME" 700
 ensure_owned_parent_dir "$XDG_STATE_HOME"
-ensure_owned_dir "$XDG_STATE_HOME" 700
-ensure_owned_dir "$XDG_CACHE_HOME" 700
+ensure_runtime_dir "$XDG_STATE_HOME" 700
+ensure_runtime_dir "$XDG_CACHE_HOME" 700
 
-echo "[init] Paseo paths ready (PUID=${PUID} PGID=${PGID} HOME=${CONTAINER_HOME} PASEO_HOME=${PASEO_HOME})"
+if [[ "$PASEO_RUNTIME_USER" == "root" ]]; then
+  mkdir -p /workspace/.git /workspace/.agents /workspace/.codex
+fi
+
+echo "[init] Paseo paths ready (runtime=${PASEO_RUNTIME_USER} PUID=${PUID} PGID=${PGID} HOME=${CONTAINER_HOME} PASEO_HOME=${PASEO_HOME})"

@@ -17,6 +17,10 @@ ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.2
 # Paseo version to install from npm. Defaults to latest; CI pins to the release version.
 ARG PASEO_VERSION=latest
+# Runtime user for the daemon. The default preserves the standard non-root
+# image; sandbox variants use root so nested agent sandboxes can use Docker
+# granted capabilities.
+ARG PASEO_RUNTIME_USER=paseo
 
 ENV HOME=/home/paseo \
     PASEO_HOME=/home/paseo/.paseo \
@@ -30,6 +34,7 @@ ENV HOME=/home/paseo \
     ONNXRUNTIME_NODE_INSTALL=skip \
     PUID=911 \
     PGID=911 \
+    PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER} \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
     S6_VERBOSITY=1
@@ -65,20 +70,33 @@ RUN set -eux; \
 COPY scripts/install-paseo.sh /tmp/install-paseo.sh
 RUN PASEO_VERSION="${PASEO_VERSION}" /tmp/install-paseo.sh && rm -f /tmp/install-paseo.sh
 
-# Non-root runtime user. IDs are re-mapped at boot from PUID/PGID.
+# Non-root runtime user for the standard images. IDs are re-mapped at boot from
+# PUID/PGID. Sandbox variants run as root and do not need this user.
 RUN set -eux; \
-    if [ -f /etc/alpine-release ]; then \
-      addgroup -g 911 paseo; \
-      adduser -D -H -h /home/paseo -u 911 -G paseo -s /bin/bash paseo; \
-    else \
-      groupadd -g 911 paseo; \
-      useradd -u 911 -g paseo -d /home/paseo -M -s /bin/bash paseo; \
+    if [ "${PASEO_RUNTIME_USER}" = "paseo" ]; then \
+      if [ -f /etc/alpine-release ]; then \
+        addgroup -g 911 paseo; \
+        adduser -D -H -h /home/paseo -u 911 -G paseo -s /bin/bash paseo; \
+      else \
+        groupadd -g 911 paseo; \
+        useradd -u 911 -g paseo -d /home/paseo -M -s /bin/bash paseo; \
+      fi; \
+      paseo_shell="$(awk -F: '$1 == "paseo" { print $7 }' /etc/passwd)"; \
+      [ "$paseo_shell" = "/bin/bash" ]; \
     fi; \
-    paseo_shell="$(awk -F: '$1 == "paseo" { print $7 }' /etc/passwd)"; \
-    [ "$paseo_shell" = "/bin/bash" ]
+    true
 
 # s6 service definitions, the docker-mods loader and the daemon launcher.
 COPY rootfs/ /
+
+RUN set -eux; \
+    case "${PASEO_RUNTIME_USER}" in \
+      paseo) ;; \
+      root) \
+        sed -i 's/^exec s6-setuidgid paseo /exec /' /etc/s6-overlay/s6-rc.d/svc-paseo/run; \
+        ;; \
+      *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; \
+    esac
 
 RUN set -eux; \
     chmod +x \

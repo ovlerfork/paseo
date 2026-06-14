@@ -1,11 +1,15 @@
 #!/command/with-contenv bash
 # Launch the Paseo daemon (supervisor entrypoint) in the foreground.
-# Runs as the unprivileged `paseo` user (svc-paseo applies s6-setuidgid).
 set -euo pipefail
 
 IMAGE_DEFAULT_HOME="/home/paseo"
 IMAGE_DEFAULT_PASEO_HOME="${IMAGE_DEFAULT_HOME}/.paseo"
-: "${HOME:=$IMAGE_DEFAULT_HOME}"
+PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER:-paseo}"
+if [[ "$PASEO_RUNTIME_USER" == "root" && "${HOME:-$IMAGE_DEFAULT_HOME}" == "$IMAGE_DEFAULT_HOME" ]]; then
+  HOME="/root"
+else
+  : "${HOME:=$IMAGE_DEFAULT_HOME}"
+fi
 if [[ -z "${PASEO_HOME:-}" || ( "$HOME" != "$IMAGE_DEFAULT_HOME" && "${PASEO_HOME:-}" == "$IMAGE_DEFAULT_PASEO_HOME" ) ]]; then
   PASEO_HOME="${HOME}/.paseo"
 fi

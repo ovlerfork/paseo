@@ -8,6 +8,9 @@
 services:
   paseo:
     image: ghcr.io/getpaseo/paseo:debian
+    # For Codex/bubblewrap sandboxing, use the root-runtime Ubuntu variant and
+    # enable the capability/security options below:
+    # image: ghcr.io/getpaseo/paseo:ubuntu-sandbox
     container_name: paseo
     hostname: paseo
     restart: unless-stopped
@@ -48,12 +51,23 @@ services:
       # Persistent HOME: Paseo state in ~/.paseo plus agent auth/config
       # (~/.claude, ~/.codex, ...).
       - ./paseo-home:/home/paseo
+      # For the ubuntu-sandbox variant, root is the runtime user. Mount /root
+      # instead of /home/paseo if you want daemon state and agent auth to persist.
+      # - ./paseo-root:/root
       # If using PASEO_HOME=/var/lib/paseo above, add that state volume too:
       # - paseo-state:/var/lib/paseo
       # The code Paseo works on. Bind-mount one or more of your repos.
       - ./workspace:/workspace
       # Example: mount a specific host project read-write.
       # - /home/me/projects/my-app:/workspace/my-app
+
+    # Needed by the ubuntu-sandbox variant for nested agent sandboxes.
+    # cap_add:
+    #   - NET_ADMIN
+    #   - SYS_ADMIN
+    # security_opt:
+    #   - seccomp=unconfined
+    #   - apparmor=unconfined
 
 # volumes:
 #   paseo-state:

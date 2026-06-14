@@ -162,6 +162,9 @@ run_install_hooks() {
   local image_default_home="/home/paseo"
   local image_default_paseo_home="${image_default_home}/.paseo"
   local user_home="${HOME:-$image_default_home}"
+  if [[ "${PASEO_RUNTIME_USER:-paseo}" == "root" && "$user_home" == "$image_default_home" ]]; then
+    user_home="/root"
+  fi
   local user_paseo_home="${PASEO_HOME:-}"
   if [[ -z "$user_paseo_home" || ( "$user_home" != "$image_default_home" && "$user_paseo_home" == "$image_default_paseo_home" ) ]]; then
     user_paseo_home="${user_home}/.paseo"

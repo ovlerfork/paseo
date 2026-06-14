@@ -46,7 +46,12 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 
 # Drop to the unprivileged paseo user. Never fail the boot.
-s6-setuidgid paseo paseo daemon pair || \
-  echo "[pair] failed to generate pairing QR (relay disabled?); continuing." >&2
+if [[ "${PASEO_RUNTIME_USER:-paseo}" == "root" ]]; then
+  paseo daemon pair || \
+    echo "[pair] failed to generate pairing QR (relay disabled?); continuing." >&2
+else
+  s6-setuidgid paseo paseo daemon pair || \
+    echo "[pair] failed to generate pairing QR (relay disabled?); continuing." >&2
+fi
 
 exit 0

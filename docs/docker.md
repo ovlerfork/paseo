@@ -32,6 +32,7 @@ The image sources live in [`docker/`](../docker/).
 | --------------------------------------- | ---------------- | --------------- |
 | `ghcr.io/getpaseo/paseo:debian`         | `debian:13-slim` | glibc (default) |
 | `ghcr.io/getpaseo/paseo:ubuntu`         | `ubuntu:24.04`   | glibc           |
+| `ghcr.io/getpaseo/paseo:ubuntu-sandbox` | `ubuntu:24.04`   | glibc           |
 | `ghcr.io/getpaseo/paseo:alpine`         | `alpine:3.21`    | musl            |
 | `ghcr.io/getpaseo/paseo:arch`           | `archlinux:base` | glibc           |
 | `ghcr.io/getpaseo/paseo:<ver>-<distro>` | pinned           | —               |
@@ -43,6 +44,25 @@ multi-arch (`amd64`, `arm64`). `:alpine` and `:arch` are `amd64`-only: Arch has
 no official arm64 base image, and Alpine arm64 builds are disabled because Node
 crashes with `Illegal instruction` under GitHub Actions QEMU emulation. On Apple
 Silicon / arm64 hosts use Debian or Ubuntu.
+
+The `:ubuntu-sandbox` tag is an Ubuntu variant for agents that need nested Linux
+sandboxing, such as Codex with bubblewrap. It runs the Paseo daemon and agents
+as root inside the container so Docker-granted capabilities are effective. It
+does not bundle Codex; install Codex with the normal Docker Mod:
+
+```yaml
+environment:
+  DOCKER_MODS: "ghcr.io/getpaseo/mods:codex"
+cap_add:
+  - NET_ADMIN
+  - SYS_ADMIN
+security_opt:
+  - seccomp=unconfined
+  - apparmor=unconfined
+```
+
+Use this variant only for trusted workspaces. It is narrower than
+`privileged: true`, but agents still run as root inside the container.
 
 ## Quick start
 
@@ -161,13 +181,13 @@ Provide credentials via env vars or by logging in once:
 - **OpenCode** — provider env vars (`OPENAI_API_KEY`, etc.).
 - **Pi** — `$HOME/.pi/agent/auth.json`.
 
-For interactive agent auth in Docker, the credential files must exist inside
-the container's `paseo` user home. Either mount the whole persistent home
-(`-v "$PWD/paseo-home:/home/paseo"` by default), or mount the specific agent
-config/auth directories into that home. If you do not mount existing host
-credentials, run the agent CLI once inside the container so it can create them
-there. You can do that from a Paseo Terminal, or from the host with
-`docker exec`:
+For interactive agent auth in Docker, the credential files must exist inside the
+runtime user's home. On standard images this is the `paseo` user home. Either
+mount the whole persistent home (`-v "$PWD/paseo-home:/home/paseo"` by default),
+or mount the specific agent config/auth directories into that home. If you do
+not mount existing host credentials, run the agent CLI once inside the container
+so it can create them there. You can do that from a Paseo Terminal, or from the
+host with `docker exec`:
 
 ```bash
 docker exec -it --user paseo paseo claude
@@ -177,6 +197,15 @@ docker exec -it --user paseo paseo codex
 The image gives the unprivileged `paseo` user a real login shell. From a root
 shell inside the container, `su -l paseo` drops into the same persistent home
 used by agents; daemon state remains in `PASEO_HOME`.
+
+On the `:ubuntu-sandbox` variant, the daemon and agents run as root and default
+to `/root` for `HOME`, `PASEO_HOME`, and agent config. Mount `/root` or set
+`HOME`/`PASEO_HOME` explicitly if you need those credentials and daemon state to
+persist. Run first-time agent login as root on that variant:
+
+```bash
+docker exec -it paseo codex
+```
 
 This first-run login step is not needed for providers configured entirely with
 API key environment variables passed to the container, such as
@@ -272,6 +301,9 @@ directly.
   [SECURITY.md](../SECURITY.md).
 - Agents execute arbitrary code on your mounted workspace. The container is the
   isolation boundary; the daemon and agents run as the non-root `paseo` user.
+- The `:ubuntu-sandbox` variant is an exception: the daemon and agents run as
+  root inside the container so nested agent sandboxes can use Docker-granted
+  capabilities. Do not use it for untrusted workspaces.
 - `PASEO_ENABLE_SUDO=true` lets the daemon and agents become root inside the
   container with `sudo` and install or modify OS packages. Use it only for
   trusted agents and trusted workspaces.
