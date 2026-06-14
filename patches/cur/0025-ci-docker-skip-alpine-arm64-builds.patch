@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Mon, 8 Jun 2026 12:22:18 +0200
+Subject: [PATCH] ci(docker): skip alpine arm64 builds
+
+
+diff --git a/.github/workflows/docker.yml b/.github/workflows/docker.yml
+index cb2142ab..bcd35eee 100644
+--- a/.github/workflows/docker.yml
++++ b/.github/workflows/docker.yml
+@@ -77,6 +77,7 @@ jobs:
+           - name: alpine
+             base: alpine:3.21
+             moving: alpine
++            platforms: linux/amd64
+           - name: arch
+             base: archlinux:base
+             moving: arch
+diff --git a/docker/README.md b/docker/README.md
+index 8d2e8c40..53cd292c 100644
+--- a/docker/README.md
++++ b/docker/README.md
+@@ -50,6 +50,9 @@ Set `-e PASEO_PAIRING_QR=0` to disable.
+ | `ghcr.io/getpaseo/paseo:alpine`         | Smallest. musl — some agents N/A.        |
+ | `ghcr.io/getpaseo/paseo:<ver>-<distro>` | Version-pinned (e.g. `0.1.89-debian13`). |
+ 
++Debian and Ubuntu images are multi-arch (`amd64`, `arm64`). Alpine and Arch are
++`amd64`-only; use Debian or Ubuntu on arm64 hosts.
++
+ ## Agent mods
+ 
+ | Mod                                 | Installs                    | Provider   |
+diff --git a/docs/docker.md b/docs/docker.md
+index 5099f4fe..8b6c8654 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -38,10 +38,11 @@ The image sources live in [`docker/`](../docker/).
+ 
+ `<distro>` tags: `debian12`, `debian13`, `ubuntu2204`, `ubuntu2404`, `alpine`,
+ `arch`. The moving `:debian` / `:ubuntu` / `:alpine` / `:arch` tags track the
+-newest version. `:latest` aliases `:debian`. All images are multi-arch
+-(`amd64`, `arm64`) **except `:arch`, which is `amd64`-only** (the official Arch
+-base has no arm64 build — on Apple Silicon / arm64 hosts use Debian, Ubuntu, or
+-Alpine).
++newest version. `:latest` aliases `:debian`. Debian and Ubuntu images are
++multi-arch (`amd64`, `arm64`). `:alpine` and `:arch` are `amd64`-only: Arch has
++no official arm64 base image, and Alpine arm64 builds are disabled because Node
++crashes with `Illegal instruction` under GitHub Actions QEMU emulation. On Apple
++Silicon / arm64 hosts use Debian or Ubuntu.
+ 
+ ## Quick start
+ 

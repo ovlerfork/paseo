@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Tue, 9 Jun 2026 11:45:06 +0200
+Subject: [PATCH] fix(docker): fail on mod extraction errors
+
+
+diff --git a/docker/base/rootfs/usr/local/bin/docker-mods b/docker/base/rootfs/usr/local/bin/docker-mods
+index 91784d8c..e3f627a9 100755
+--- a/docker/base/rootfs/usr/local/bin/docker-mods
++++ b/docker/base/rootfs/usr/local/bin/docker-mods
+@@ -145,7 +145,11 @@ apply_mod() {
+       return 1
+     fi
+     # Layers are gzip-compressed tar by default; fall back to plain tar.
+-    tar -C / -xzpf "$blob" 2>/dev/null || tar -C / -xpf "$blob"
++    if ! tar -C / -xzpf "$blob" 2>/dev/null && ! tar -C / -xpf "$blob"; then
++      echo "[mods] ERROR: failed to extract layer ${d}; skipping mod." >&2
++      rm -f "$blob"
++      return 1
++    fi
+     rm -f "$blob"
+   done <<< "$layers"
+ 

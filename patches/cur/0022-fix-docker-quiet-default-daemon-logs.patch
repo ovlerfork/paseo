@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Sun, 7 Jun 2026 11:43:07 +0200
+Subject: [PATCH] fix(docker): quiet default daemon logs
+
+
+diff --git a/docker/base/rootfs/usr/local/bin/paseo-run b/docker/base/rootfs/usr/local/bin/paseo-run
+index 5c50ae55..0e2e86fd 100755
+--- a/docker/base/rootfs/usr/local/bin/paseo-run
++++ b/docker/base/rootfs/usr/local/bin/paseo-run
+@@ -28,6 +28,9 @@ home_scoped_env XDG_CACHE_HOME "/.cache"
+ : "${PASEO_LISTEN:=0.0.0.0:6767}"
+ export PASEO_LISTEN
+ 
++: "${PASEO_LOG_LEVEL:=warn}"
++export PASEO_LOG_LEVEL
++
+ if [[ -z "${PASEO_PASSWORD:-}" ]]; then
+   echo "[paseo] WARNING: PASEO_PASSWORD is not set." >&2
+   echo "[paseo] The daemon will accept connections without a password." >&2
+diff --git a/docs/docker.md b/docs/docker.md
+index 8060dc2b..29ce2681 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -194,6 +194,8 @@ The image only changes a few container defaults:
+ - `PASEO_LISTEN=0.0.0.0:6767`, so the daemon is reachable through Docker port
+   publishing.
+ - `PASEO_LOG_FORMAT=json` in production.
++- `PASEO_LOG_LEVEL=warn`, so `docker logs` and `/home/paseo/daemon.log` stay
++  focused on warnings and errors unless you opt into more verbose logging.
+ 
+ For daemon/runtime env details, use the existing references:
+ 
+@@ -224,6 +226,25 @@ On startup the container prints a pairing QR code and link to its logs once the
+ daemon is listening (s6 `svc-paseo-pair` oneshot, best-effort — never blocks
+ boot). Scan it from `docker logs` with the Paseo app.
+ 
++### Docker log verbosity
++
++The container keeps daemon logs quiet by default. `PASEO_LOG_LEVEL` controls the
++daemon log level; the Docker image defaults it to `warn`. Set it to `info` to
++see normal daemon activity:
++
++```bash
++docker run -e PASEO_LOG_LEVEL=info ...
++```
++
++For deeper debugging, use `debug` or `trace`:
++
++```bash
++docker run -e PASEO_LOG_LEVEL=trace ...
++```
++
++The setting affects both `docker logs` and the persisted daemon log. Use
++`docker exec paseo tail -f /home/paseo/daemon.log` to follow the file directly.
++
+ ## Security
+ 
+ - The daemon binds `0.0.0.0` **inside** the container; you control exposure via

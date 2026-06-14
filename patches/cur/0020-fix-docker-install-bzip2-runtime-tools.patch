@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Sun, 7 Jun 2026 11:20:51 +0200
+Subject: [PATCH] fix(docker): install bzip2 runtime tools
+
+
+diff --git a/docker/base/scripts/install-base.sh b/docker/base/scripts/install-base.sh
+index 9a147ce6..b80d5f6a 100755
+--- a/docker/base/scripts/install-base.sh
++++ b/docker/base/scripts/install-base.sh
+@@ -37,6 +37,7 @@ if command -v apk >/dev/null 2>&1; then
+   # Alpine. nodejs/npm come from the distro repos (Alpine 3.21+ ships Node 22).
+   apk add --no-cache \
+     bash \
++    bzip2 \
+     ca-certificates \
+     curl \
+     git \
+@@ -56,11 +57,13 @@ elif command -v apt-get >/dev/null 2>&1; then
+   export DEBIAN_FRONTEND=noninteractive
+   apt-get update
+   apt-get install -y --no-install-recommends \
++    bzip2 \
+     ca-certificates \
+     curl \
+     git \
+     gnupg \
+     jq \
++    lbzip2 \
+     procps \
+     sudo \
+     xz-utils
+@@ -78,6 +81,8 @@ elif command -v pacman >/dev/null 2>&1; then
+     curl \
+     git \
+     jq \
++    bzip2 \
++    lbzip2 \
+     nodejs \
+     npm \
+     procps-ng \
+diff --git a/docs/docker.md b/docs/docker.md
+index 7ab97535..63fe7a8e 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -269,6 +269,9 @@ Ubuntu 22.04 arm64.
+ - **Provider not showing up** — check the boot log (`docker logs paseo`) for
+   `[mods]`/`[mod:<agent>]` lines. A failed `npm install` is logged but does not
+   stop the daemon. On Alpine, native agents (Codex) will not install.
++- **`tar (child): lbzip2: Cannot exec` at startup** — pull or rebuild an image
++  that includes the bzip2/lbzip2 runtime tools. This happens before the daemon
++  starts, while boot extracts archives or Docker Mod layers.
+ - **Can't connect / 403** — set `PASEO_HOSTNAMES` if reaching the daemon by a DNS
+   name; IPs and `localhost` are allowed by default.
+ - **OpenCode says `unable to open database file` or fails on

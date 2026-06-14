@@ -1,0 +1,52 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch upstream read-only
+        run: |
+          git remote add upstream https://github.com/getpaseo/paseo.git || true
+          git fetch upstream main --tags --prune
+
+      - name: Update main from upstream
+        id: update
+        run: |
+          set -euo pipefail
+          LOCAL=$(git rev-parse main)
+          REMOTE=$(git rev-parse upstream/main)
+          if [ "$LOCAL" = "$REMOTE" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "main already matches upstream."
+            exit 0
+          fi
+          git checkout main
+          git reset --hard upstream/main
+          git push origin main --force-with-lease
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger patch check
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run patch-check.yml \
+            --ref patchset \
+            -f upstream_ref="${{ steps.update.outputs.upstream_sha }}"

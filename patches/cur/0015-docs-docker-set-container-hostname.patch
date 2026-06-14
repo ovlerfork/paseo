@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Thu, 4 Jun 2026 14:47:10 +0200
+Subject: [PATCH] docs(docker): set container hostname
+
+
+diff --git a/docker/README.md b/docker/README.md
+index 5c497259..04833060 100644
+--- a/docker/README.md
++++ b/docker/README.md
+@@ -15,6 +15,7 @@ connect the Paseo app/CLI from anywhere.
+ 
+ ```bash
+ docker run -d --name paseo \
++  --hostname paseo \
+   -p 6767:6767 \
+   -e PASEO_PASSWORD=change-me \
+   -e DOCKER_MODS=ghcr.io/getpaseo/mods:claude-code \
+diff --git a/docker/docker-compose.example.yml b/docker/docker-compose.example.yml
+index 7945adb6..b264bea0 100644
+--- a/docker/docker-compose.example.yml
++++ b/docker/docker-compose.example.yml
+@@ -9,6 +9,7 @@ services:
+   paseo:
+     image: ghcr.io/getpaseo/paseo:debian
+     container_name: paseo
++    hostname: paseo
+     restart: unless-stopped
+     # Only needed if you do not want to use the relay and prefer to expose
+     # the daemon directly on the host.
+diff --git a/docs/docker.md b/docs/docker.md
+index 2380d910..0f5fe1e6 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -47,6 +47,7 @@ Alpine).
+ 
+ ```bash
+ docker run -d --name paseo \
++  --hostname paseo \
+   -p 6767:6767 \
+   -e PASEO_PASSWORD=change-me \
+   -e DOCKER_MODS=ghcr.io/getpaseo/mods:claude-code \
+@@ -56,6 +57,10 @@ docker run -d --name paseo \
+   ghcr.io/getpaseo/paseo:debian
+ ```
+ 
++Docker keeps the container name and hostname separate. If you rename the
++container, keep `--name` and `--hostname` in sync; in Compose, keep
++`container_name` and `hostname` in sync.
++
+ If agents need to install OS packages inside the container, opt in to
+ passwordless sudo for the `paseo` user:
+ 
+@@ -90,6 +95,7 @@ container path. For example, to store daemon state in a dedicated Docker volume:
+ ```bash
+ docker volume create paseo-state
+ docker run -d --name paseo \
++  --hostname paseo \
+   -p 6767:6767 \
+   -e PASEO_PASSWORD=change-me \
+   -e PASEO_HOME=/var/lib/paseo \

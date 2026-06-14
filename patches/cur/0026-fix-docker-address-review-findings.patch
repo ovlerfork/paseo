@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Tue, 9 Jun 2026 09:52:36 +0200
+Subject: [PATCH] fix(docker): address review findings
+
+
+diff --git a/.github/workflows/docker.yml b/.github/workflows/docker.yml
+index bcd35eee..15834f5e 100644
+--- a/.github/workflows/docker.yml
++++ b/.github/workflows/docker.yml
+@@ -35,19 +35,22 @@ jobs:
+     steps:
+       - uses: actions/checkout@v6
+       - id: v
++        env:
++          INPUT_PASEO_VERSION: ${{ inputs.paseo_version }}
++          REPO_OWNER: ${{ github.repository_owner }}
+         run: |
+           set -euo pipefail
+           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+             version="${GITHUB_REF#refs/tags/v}"
+             push=true
+-          elif [[ -n "${{ inputs.paseo_version }}" ]]; then
+-            version="${{ inputs.paseo_version }}"
++          elif [[ -n "${INPUT_PASEO_VERSION}" ]]; then
++            version="${INPUT_PASEO_VERSION}"
+             push=true
+           else
+             version="$(node -p "require('./package.json').version")"
+             push=false
+           fi
+-          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
++          owner="$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
+           echo "version=${version}" >> "$GITHUB_OUTPUT"
+           echo "push=${push}" >> "$GITHUB_OUTPUT"
+           echo "owner=${owner}" >> "$GITHUB_OUTPUT"
+diff --git a/docker/base/rootfs/etc/s6-overlay/s6-rc.d/svc-paseo-pair/run b/docker/base/rootfs/etc/s6-overlay/s6-rc.d/svc-paseo-pair/run
+index f0fcb6b8..c79b22c6 100755
+--- a/docker/base/rootfs/etc/s6-overlay/s6-rc.d/svc-paseo-pair/run
++++ b/docker/base/rootfs/etc/s6-overlay/s6-rc.d/svc-paseo-pair/run
+@@ -3,9 +3,14 @@
+ # can scan it straight from `docker logs`. Best-effort: never fail the boot.
+ set -uo pipefail
+ 
+-: "${PASEO_HOME:=/home/paseo}"
++IMAGE_DEFAULT_HOME="/home/paseo"
++IMAGE_DEFAULT_PASEO_HOME="${IMAGE_DEFAULT_HOME}/.paseo"
++: "${HOME:=$IMAGE_DEFAULT_HOME}"
++if [[ -z "${PASEO_HOME:-}" || ( "$HOME" != "$IMAGE_DEFAULT_HOME" && "${PASEO_HOME:-}" == "$IMAGE_DEFAULT_PASEO_HOME" ) ]]; then
++  PASEO_HOME="${HOME}/.paseo"
++fi
++export HOME
+ export PASEO_HOME
+-export HOME="$PASEO_HOME"
+ 
+ # Allow opting out: PASEO_PAIRING_QR in {0,false,no,off} skips the QR.
+ case "$(printf '%s' "${PASEO_PAIRING_QR:-}" | tr '[:upper:]' '[:lower:]')" in
+@@ -34,7 +39,7 @@ if [[ "$ready" -ne 1 ]]; then
+   exit 0
+ fi
+ 
+-# Drop to the unprivileged paseo user (owns PASEO_HOME). Never fail the boot.
++# Drop to the unprivileged paseo user. Never fail the boot.
+ s6-setuidgid paseo paseo daemon pair || \
+   echo "[pair] failed to generate pairing QR (relay disabled?); continuing." >&2
+ 
+diff --git a/docker/base/rootfs/usr/local/bin/docker-mods b/docker/base/rootfs/usr/local/bin/docker-mods
+index 2d208db9..91784d8c 100755
+--- a/docker/base/rootfs/usr/local/bin/docker-mods
++++ b/docker/base/rootfs/usr/local/bin/docker-mods
+@@ -30,10 +30,6 @@ esac
+ # Parse "[registry/]repo[:tag]" into registry / repo / tag.
+ parse_ref() {
+   local ref="$1" registry repo tag rest
+-  case "$ref" in
+-    *:*/*) registry=""; rest="$ref" ;;            # colon only inside a path is not a host
+-    *) rest="$ref" ;;
+-  esac
+   # Split optional registry host (contains a dot or a colon, or is localhost).
+   local first="${ref%%/*}"
+   if [[ "$first" == *.* || "$first" == *:* || "$first" == "localhost" ]]; then
+@@ -111,6 +107,7 @@ apply_mod() {
+       '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$arch) | .digest' \
+       | head -n1)"
+     if [[ -z "$digest" ]]; then
++      echo "[mods] WARNING: no ${GOARCH} manifest found for ${ref}; falling back to first entry." >&2
+       digest="$(echo "$manifest" | jq -r '.manifests[0].digest')"
+     fi
+     manifest="$(curl -fsSL "${auth[@]}" -H "Accept: ${ACCEPT_MANIFEST}" \
+@@ -124,7 +121,7 @@ apply_mod() {
+     return 0
+   fi
+ 
+-  local i=0 d blob
++  local i=0 d blob expected actual
+   while IFS= read -r d; do
+     [[ -z "$d" ]] && continue
+     i=$((i + 1))
+@@ -134,6 +131,19 @@ apply_mod() {
+       echo "[mods] ERROR: failed to download layer ${d}; skipping mod." >&2
+       return 1
+     }
++    if [[ "$d" != sha256:* ]]; then
++      echo "[mods] ERROR: unsupported layer digest ${d}; skipping mod." >&2
++      return 1
++    fi
++    expected="${d#sha256:}"
++    actual="$(sha256sum "$blob" | awk '{ print $1 }')" || {
++      echo "[mods] ERROR: failed to hash layer ${d}; skipping mod." >&2
++      return 1
++    }
++    if [[ "$actual" != "$expected" ]]; then
++      echo "[mods] ERROR: digest mismatch for layer ${d}; expected ${expected}, got ${actual}; skipping mod." >&2
++      return 1
++    fi
+     # Layers are gzip-compressed tar by default; fall back to plain tar.
+     tar -C / -xzpf "$blob" 2>/dev/null || tar -C / -xpf "$blob"
+     rm -f "$blob"
+diff --git a/docker/base/scripts/install-base.sh b/docker/base/scripts/install-base.sh
+index b80d5f6a..7d240db2 100755
+--- a/docker/base/scripts/install-base.sh
++++ b/docker/base/scripts/install-base.sh
+@@ -13,7 +13,7 @@ install_node_tarball() {
+       ;;
+   esac
+ 
+-  node_dist_url="${NODE_DIST_URL:-https://nodejs.org/dist/latest-v22.x}"
++  node_dist_url="${NODE_DIST_URL:-https://nodejs.org/dist/v22.22.3}"
+   node_tmp="$(mktemp -d)"
+   sums_file="${node_tmp}/SHASUMS256.txt"
+ 

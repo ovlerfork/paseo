@@ -1,0 +1,107 @@
+name: Patch Check
+
+on:
+  push:
+    branches: [patchset]
+  pull_request:
+    branches: [patchset, main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream ref to test against"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout patchset branch
+        uses: actions/checkout@v4
+        with:
+          ref: patchset
+          path: patchset
+
+      - name: Checkout upstream source
+        uses: actions/checkout@v4
+        with:
+          repository: getpaseo/paseo
+          ref: ${{ inputs.upstream_ref || 'main' }}
+          path: source
+          fetch-depth: 0
+
+      - name: Apply patches
+        id: apply
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git config user.name "patch-ci"
+          git config user.email "ci@localhost"
+          git config rerere.enabled true
+
+          FAILED=""
+          APPLIED=0
+          for patch in ../patchset/patches/cur/*.patch; do
+            NAME=$(basename "$patch")
+            echo "==== Applying: $NAME ===="
+            if ! git am --3way "$patch"; then
+              FAILED="$NAME"
+              break
+            fi
+            APPLIED=$((APPLIED + 1))
+          done
+
+          echo "applied=$APPLIED" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$FAILED" ]; then
+            echo "failed_patch=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            mkdir -p /tmp/patch-artifacts
+            git am --show-current-patch > /tmp/patch-artifacts/failed-patch.patch 2>/dev/null || true
+            git diff --name-only --diff-filter=U > /tmp/patch-artifacts/conflict-files.txt 2>/dev/null || true
+            git status --short > /tmp/patch-artifacts/git-status.txt
+            git am --abort || true
+          else
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload conflict artifacts
+        if: steps.apply.outputs.status == 'conflict'
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-conflict
+          path: /tmp/patch-artifacts/
+
+      - name: Run patchset sanitizer
+        if: steps.apply.outputs.status == 'ok'
+        working-directory: patchset
+        run: bash scripts/check-no-upstream-refs.sh
+
+      - name: Validate shell scripts
+        if: steps.apply.outputs.status == 'ok'
+        working-directory: source
+        run: |
+          set -euo pipefail
+          find docker -type f \( -name '*.sh' -o -path '*/rootfs/usr/local/bin/*' -o -path '*/root-layer/etc/paseo-mods/*/install' -o -path '*/s6-rc.d/*/run' \) -print0 \
+            | xargs -0 -r bash -n
+
+      - name: Validate Docker build definition
+        if: steps.apply.outputs.status == 'ok'
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/docker.yml
+          test -f docker/base/Dockerfile
+          test -f docker/docker-compose.example.yml
+          for agent in claude-code codex copilot opencode pi; do
+            test -f "docker/mods/${agent}/Dockerfile"
+          done
+
+      - name: Fail on patch conflict
+        if: steps.apply.outputs.status != 'ok'
+        run: exit 1

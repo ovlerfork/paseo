@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Herbrant <cdavide98carnemolla@gmail.com>
+Date: Sun, 7 Jun 2026 11:33:29 +0200
+Subject: [PATCH] fix(docker): update Pi mod package
+
+
+diff --git a/docker/mods/pi/root-layer/etc/paseo-mods/pi/install b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+index 518146e2..d064962c 100755
+--- a/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
++++ b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+@@ -11,7 +11,13 @@ if command -v pi >/dev/null 2>&1; then
+   exit 0
+ fi
+ 
+-PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi}"
++PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
+ echo "[mod:pi] installing ${PI_NPM_PACKAGE}"
+-npm install -g "${PI_NPM_PACKAGE}"
+-echo "[mod:pi] done ($(command -v pi || echo 'pi not found — check PI_NPM_PACKAGE'))"
++npm install -g --ignore-scripts "${PI_NPM_PACKAGE}"
++
++PI_BIN="$(command -v pi)" || {
++  echo "[mod:pi] ERROR: ${PI_NPM_PACKAGE} did not install a 'pi' binary on PATH." >&2
++  exit 1
++}
++
++echo "[mod:pi] done (${PI_BIN})"
+diff --git a/docs/docker.md b/docs/docker.md
+index 63fe7a8e..8060dc2b 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -118,13 +118,13 @@ Set `PUID`/`PGID` to the uid/gid that owns the bind-mounted folders on the host
+ DOCKER_MODS=ghcr.io/getpaseo/mods:claude-code|ghcr.io/getpaseo/mods:opencode
+ ```
+ 
+-| Mod           | Package                     | Binary     | Alpine?                     |
+-| ------------- | --------------------------- | ---------- | --------------------------- |
+-| `claude-code` | `@anthropic-ai/claude-code` | `claude`   | yes (pure JS)               |
+-| `opencode`    | `opencode-ai`               | `opencode` | yes (pure JS)               |
+-| `copilot`     | `@github/copilot`           | `copilot`  | usually                     |
+-| `codex`       | `@openai/codex`             | `codex`    | **no** (native, glibc only) |
+-| `pi`          | `@mariozechner/pi`          | `pi`       | check                       |
++| Mod           | Package                           | Binary     | Alpine?                     |
++| ------------- | --------------------------------- | ---------- | --------------------------- |
++| `claude-code` | `@anthropic-ai/claude-code`       | `claude`   | yes (pure JS)               |
++| `opencode`    | `opencode-ai`                     | `opencode` | yes (pure JS)               |
++| `copilot`     | `@github/copilot`                 | `copilot`  | usually                     |
++| `codex`       | `@openai/codex`                   | `codex`    | **no** (native, glibc only) |
++| `pi`          | `@earendil-works/pi-coding-agent` | `pi`       | check                       |
+ 
+ Agents that ship a native binary via npm (notably Codex) have no musl build, so
+ use a glibc image (Debian/Ubuntu) for those. The `pi` package name is overridable
