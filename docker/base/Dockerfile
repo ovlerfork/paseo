@@ -17,6 +17,8 @@ ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.2
 # Paseo version to install from npm. Defaults to latest; CI pins to the release version.
 ARG PASEO_VERSION=latest
+ARG NPM_VERSION=11.17.0
+ARG COREPACK_VERSION=0.35.0
 ARG PNPM_VERSION=11.6.0
 ARG UV_VERSION=0.11.21
 # Runtime user for the daemon. The default preserves the standard non-root
@@ -43,7 +45,7 @@ ENV HOME=/home/paseo \
 
 # Base runtime deps + Node 24 LTS (family-detected inside the script).
 COPY scripts/install-base.sh /tmp/install-base.sh
-RUN PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER}" PNPM_VERSION="${PNPM_VERSION}" UV_VERSION="${UV_VERSION}" /tmp/install-base.sh && rm -f /tmp/install-base.sh
+RUN PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER}" NPM_VERSION="${NPM_VERSION}" COREPACK_VERSION="${COREPACK_VERSION}" PNPM_VERSION="${PNPM_VERSION}" UV_VERSION="${UV_VERSION}" /tmp/install-base.sh && rm -f /tmp/install-base.sh
 
 # s6-overlay v3 (process supervisor + PID 1).
 RUN set -eux; \

@@ -34,9 +34,13 @@ install_node_tarball() {
 }
 
 install_node_tooling() {
+  npm_version="${NPM_VERSION:-11.17.0}"
+  corepack_version="${COREPACK_VERSION:-0.35.0}"
   pnpm_version="${PNPM_VERSION:-11.6.0}"
+  npm install -g "npm@${npm_version}" "corepack@${corepack_version}"
   corepack enable
-  corepack prepare "pnpm@${pnpm_version}" --activate
+  corepack install -g "pnpm@${pnpm_version}"
+  COREPACK_ENABLE_NETWORK=0 pnpm --version
 }
 
 install_uv() {
