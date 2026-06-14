@@ -9,7 +9,7 @@ The image sources live in [`docker/`](../docker/).
 ## How it works
 
 - **Base image** (`docker/base`) — one Dockerfile parametrized by `BASE_IMAGE`,
-  built for Ubuntu 24.04/22.04, Debian 12/13 and Alpine. It bundles Node 22, the
+  built for Ubuntu 24.04/22.04, Debian 12/13 and Alpine. It bundles Node 24 LTS, the
   Paseo server + CLI installed from npm (`@getpaseo/server`, `@getpaseo/cli`), a
   vendored [s6-overlay](https://github.com/just-containers/s6-overlay) as PID 1,
   and a small Docker Mods loader.
@@ -330,7 +330,7 @@ Multi-arch builds and registry publishing are wired up in
 [`.github/workflows/docker.yml`](../.github/workflows/docker.yml), triggered on
 release tags.
 
-For Debian/Ubuntu base images, Node 22 is installed from the official Node.js
+For Debian/Ubuntu base images, Node 24 LTS is installed from the official Node.js
 tarball rather than the NodeSource apt repository. The NodeSource arm64 package
 can trip `libc-bin` post-install triggers under QEMU during GitHub Actions
 multi-arch builds, which has caused intermittent segmentation faults on

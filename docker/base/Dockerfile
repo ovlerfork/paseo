@@ -17,7 +17,7 @@ ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.2
 # Paseo version to install from npm. Defaults to latest; CI pins to the release version.
 ARG PASEO_VERSION=latest
-ARG PNPM_VERSION=10.12.1
+ARG PNPM_VERSION=11.6.0
 ARG UV_VERSION=0.11.21
 # Runtime user for the daemon. The default preserves the standard non-root
 # image; sandbox variants use root so nested agent sandboxes can use Docker
@@ -41,7 +41,7 @@ ENV HOME=/home/paseo \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
     S6_VERBOSITY=1
 
-# Base runtime deps + Node 22 (family-detected inside the script).
+# Base runtime deps + Node 24 LTS (family-detected inside the script).
 COPY scripts/install-base.sh /tmp/install-base.sh
 RUN PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER}" PNPM_VERSION="${PNPM_VERSION}" UV_VERSION="${UV_VERSION}" /tmp/install-base.sh && rm -f /tmp/install-base.sh
 

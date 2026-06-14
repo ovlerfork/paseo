@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install base runtime dependencies + Node.js 22.
+# Install base runtime dependencies + Node.js 24 LTS.
 # Detects the package manager (apt vs apk) so one script covers all distros.
 set -eu
 
@@ -13,7 +13,7 @@ install_node_tarball() {
       ;;
   esac
 
-  node_dist_url="${NODE_DIST_URL:-https://nodejs.org/dist/v22.22.3}"
+  node_dist_url="${NODE_DIST_URL:-https://nodejs.org/dist/v24.16.0}"
   node_tmp="$(mktemp -d)"
   sums_file="${node_tmp}/SHASUMS256.txt"
 
@@ -34,7 +34,7 @@ install_node_tarball() {
 }
 
 install_node_tooling() {
-  pnpm_version="${PNPM_VERSION:-10.12.1}"
+  pnpm_version="${PNPM_VERSION:-11.6.0}"
   corepack enable
   corepack prepare "pnpm@${pnpm_version}" --activate
 }
@@ -94,7 +94,7 @@ install_debian_agent_tooling() {
 }
 
 if command -v apk >/dev/null 2>&1; then
-  # Alpine. nodejs/npm come from the distro repos (Alpine 3.21+ ships Node 22).
+  # Alpine. nodejs/npm come from the distro repos.
   apk add --no-cache \
     bash \
     bubblewrap \
