@@ -33,6 +33,66 @@ install_node_tarball() {
   rm -rf "${node_tmp}"
 }
 
+install_node_tooling() {
+  pnpm_version="${PNPM_VERSION:-10.12.1}"
+  corepack enable
+  corepack prepare "pnpm@${pnpm_version}" --activate
+}
+
+install_uv() {
+  uv_version="${UV_VERSION:-0.11.21}"
+  case "$(uname -m)" in
+    x86_64) uv_arch=x86_64 ;;
+    aarch64) uv_arch=aarch64 ;;
+    *)
+      echo "Unsupported uv architecture: $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  uv_platform="${uv_arch}-unknown-linux-gnu"
+  uv_archive="uv-${uv_platform}.tar.gz"
+  uv_tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_archive}" -o "${uv_tmp}/${uv_archive}"
+  curl -fsSL "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_archive}.sha256" -o "${uv_tmp}/${uv_archive}.sha256"
+  (cd "${uv_tmp}" && sha256sum -c "${uv_archive}.sha256")
+  tar -C "${uv_tmp}" -xzf "${uv_tmp}/${uv_archive}"
+  install -m 0755 "${uv_tmp}/uv-${uv_platform}/uv" /usr/local/bin/uv
+  install -m 0755 "${uv_tmp}/uv-${uv_platform}/uvx" /usr/local/bin/uvx
+  rm -rf "${uv_tmp}"
+}
+
+install_debian_agent_tooling() {
+  keyring_tmp="$(mktemp)"
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "${keyring_tmp}"
+  printf '%s  %s\n' \
+    '6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b' \
+    "${keyring_tmp}" | sha256sum -c -
+  install -m 0755 -d /etc/apt/keyrings /etc/apt/sources.list.d
+  install -m 0644 "${keyring_tmp}" /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  rm -f "${keyring_tmp}"
+  printf '%s\n' \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list
+
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    fd-find \
+    gh \
+    less \
+    openssh-client \
+    pipx \
+    python3-venv \
+    ripgrep \
+    rsync \
+    unzip \
+    vim-tiny \
+    zip
+
+  install_uv
+  install_node_tooling
+}
+
 if command -v apk >/dev/null 2>&1; then
   # Alpine. nodejs/npm come from the distro repos (Alpine 3.21+ ships Node 22).
   apk add --no-cache \
@@ -70,6 +130,9 @@ elif command -v apt-get >/dev/null 2>&1; then
     sudo \
     xz-utils
   install_node_tarball
+  if [ "${PASEO_RUNTIME_USER:-paseo}" = "root" ]; then
+    install_debian_agent_tooling
+  fi
   apt-get clean
   rm -rf /var/lib/apt/lists/*
 elif command -v pacman >/dev/null 2>&1; then
@@ -102,3 +165,12 @@ fi
 
 node --version
 npm --version
+if command -v gh >/dev/null 2>&1; then
+  gh --version | head -n 1
+fi
+if command -v uv >/dev/null 2>&1; then
+  uv --version
+fi
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm --version
+fi
