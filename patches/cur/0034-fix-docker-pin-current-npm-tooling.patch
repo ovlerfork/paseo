@@ -30,7 +30,7 @@ diff --git a/docker/base/scripts/install-base.sh b/docker/base/scripts/install-b
 index cb99c835..11089639 100755
 --- a/docker/base/scripts/install-base.sh
 +++ b/docker/base/scripts/install-base.sh
-@@ -34,7 +34,10 @@ install_node_tarball() {
+@@ -34,7 +34,11 @@ install_node_tarball() {
  }
  
  install_node_tooling() {
@@ -39,5 +39,7 @@ index cb99c835..11089639 100755
    pnpm_version="${PNPM_VERSION:-11.6.0}"
 +  npm install -g "npm@${npm_version}" "corepack@${corepack_version}"
    corepack enable
-   corepack prepare "pnpm@${pnpm_version}" --activate
+-  corepack prepare "pnpm@${pnpm_version}" --activate
++  corepack install -g "pnpm@${pnpm_version}"
++  COREPACK_ENABLE_NETWORK=0 pnpm --version
  }
