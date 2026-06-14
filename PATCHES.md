@@ -14,7 +14,7 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 
 ## Current patch series
 
-The current series imports Docker support and Docker publishing/build automation for the Paseo daemon and agent Docker Mods. It also installs `bubblewrap` in the base Docker images and publishes an `ubuntu-sandbox` image variant for agents that need nested Linux sandboxing inside Paseo containers.
+The current series imports Docker support and Docker publishing/build automation for the Paseo daemon and agent Docker Mods. It also installs `bubblewrap` in the base Docker images and publishes an `ubuntu-sandbox` image variant for agents that need nested Linux sandboxing inside Paseo containers. The sandbox variant bakes in common agent tools such as `gh`, `uv`, `pnpm`, `ripgrep`, `fd`, `pipx`, `rsync`, and archive/SSH utilities so they are available immediately after reboot.
 
 ## Apply locally
 
