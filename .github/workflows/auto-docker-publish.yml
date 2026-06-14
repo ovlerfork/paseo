@@ -107,6 +107,10 @@ jobs:
           - name: ubuntu2404
             base: ubuntu:24.04
             moving: ubuntu
+          - name: ubuntu-sandbox
+            base: ubuntu:24.04
+            moving: ubuntu-sandbox
+            runtime_user: root
           - name: ubuntu2204
             base: ubuntu:22.04
           - name: alpine
@@ -168,6 +172,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             PASEO_VERSION=${{ needs.prepare.outputs.version }}
+            PASEO_RUNTIME_USER=${{ matrix.runtime_user || 'paseo' }}
           tags: ${{ steps.tags.outputs.tags }}
           push: true
           provenance: false
@@ -195,6 +200,7 @@ jobs:
             "${tag_args[@]}" \
             --build-arg "BASE_IMAGE=${ARCH_BASE_IMAGE}" \
             --build-arg "PASEO_VERSION=${RESOLVED_VERSION}" \
+            --build-arg "PASEO_RUNTIME_USER=paseo" \
             docker/base
 
           for tag in "${tags[@]}"; do
