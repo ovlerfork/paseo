@@ -13,6 +13,10 @@ export interface PickedFile {
   bytes: Uint8Array;
 }
 
+function getDesktopManagedStorageExtension(path: string): string | null {
+  return getFileExtension(path) || null;
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -26,7 +30,7 @@ export async function readDesktopFileBytes(path: string): Promise<Uint8Array> {
   const { path: managedPath } = await copyDesktopAttachmentFile({
     attachmentId: crypto.randomUUID(),
     sourcePath: path,
-    extension: getFileExtension(path).slice(1) || null,
+    extension: getDesktopManagedStorageExtension(path),
   });
   const base64 = await readDesktopFileBase64(managedPath);
   return base64ToUint8Array(base64);
@@ -63,7 +67,7 @@ async function pickFilesWithDesktopDialog(): Promise<PickedFile[] | null> {
     const { path: managedPath } = await copyDesktopAttachmentFile({
       attachmentId: crypto.randomUUID(),
       sourcePath: filePath,
-      extension: getFileExtension(filePath).slice(1) || null,
+      extension: getDesktopManagedStorageExtension(filePath),
     });
 
     const base64 = await readDesktopFileBase64(managedPath);
