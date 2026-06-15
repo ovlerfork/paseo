@@ -229,10 +229,29 @@ jobs:
           fi
           node "${DESKTOP_PACKAGE_PATH}/scripts/smoke-packaged-desktop-app.js" --app "${app_path}"
 
-      - name: Upload macOS desktop artifacts
+      - name: Upload macOS DMG artifact
         if: ${{ success() || failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-macos-${{ matrix.electron_arch }}-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*
+          name: desktop-macos-${{ matrix.electron_arch }}-dmg-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS ZIP artifact
+        if: ${{ success() || failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-${{ matrix.electron_arch }}-zip-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS blockmaps
+        if: ${{ success() || failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-${{ matrix.electron_arch }}-blockmaps-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.blockmap
+          if-no-files-found: warn
           retention-days: 14
