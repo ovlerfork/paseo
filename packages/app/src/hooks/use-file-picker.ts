@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
+import { getDesktopHost, isElectronRuntime, type DesktopDialogOpenOptions } from "@/desktop/host";
 import { copyDesktopAttachmentFile } from "@/desktop/attachments/desktop-file-commands";
 import { readDesktopFileBase64 } from "@/desktop/attachments/desktop-preview-url";
 import { isWeb } from "@/constants/platform";
@@ -13,6 +13,34 @@ export interface PickedFile {
   bytes: Uint8Array;
 }
 
+export interface DesktopFileReaderDependencies {
+  copyAttachmentFile(input: {
+    attachmentId: string;
+    sourcePath: string;
+    extension?: string | null;
+  }): Promise<{ path: string; byteSize: number }>;
+  readFileBase64(path: string): Promise<string>;
+  createAttachmentId(): string;
+}
+
+export interface DesktopFilePickerDependencies extends DesktopFileReaderDependencies {
+  openDialog(options: DesktopDialogOpenOptions): Promise<string | string[] | null>;
+}
+
+const defaultDesktopFilePickerDependencies: DesktopFilePickerDependencies = {
+  copyAttachmentFile: copyDesktopAttachmentFile,
+  readFileBase64: readDesktopFileBase64,
+  createAttachmentId: () => crypto.randomUUID(),
+  async openDialog(options) {
+    const dialogOpen = getDesktopHost()?.dialog?.open;
+    if (typeof dialogOpen !== "function") {
+      throw new Error("Desktop dialog API is not available.");
+    }
+
+    return await dialogOpen(options);
+  },
+};
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -22,24 +50,23 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-export async function readDesktopFileBytes(path: string): Promise<Uint8Array> {
-  const { path: managedPath } = await copyDesktopAttachmentFile({
-    attachmentId: crypto.randomUUID(),
+export async function readDesktopFileBytes(
+  path: string,
+  dependencies: DesktopFileReaderDependencies = defaultDesktopFilePickerDependencies,
+): Promise<Uint8Array> {
+  const { path: managedPath } = await dependencies.copyAttachmentFile({
+    attachmentId: dependencies.createAttachmentId(),
     sourcePath: path,
-    extension: getFileExtension(path).slice(1) || null,
+    extension: getFileExtension(path) || null,
   });
-  const base64 = await readDesktopFileBase64(managedPath);
+  const base64 = await dependencies.readFileBase64(managedPath);
   return base64ToUint8Array(base64);
 }
 
-async function pickFilesWithDesktopDialog(): Promise<PickedFile[] | null> {
-  const dialog = getDesktopHost()?.dialog;
-  const dialogOpen = dialog?.open;
-  if (typeof dialogOpen !== "function") {
-    throw new Error("Desktop dialog API is not available.");
-  }
-
-  const selection = await dialogOpen({
+export async function pickFilesWithDesktopDialog(
+  dependencies: DesktopFilePickerDependencies = defaultDesktopFilePickerDependencies,
+): Promise<PickedFile[] | null> {
+  const selection = await dependencies.openDialog({
     directory: false,
     multiple: true,
   });
@@ -60,13 +87,13 @@ async function pickFilesWithDesktopDialog(): Promise<PickedFile[] | null> {
     const mimeType = getMimeTypeFromPath(filePath);
 
     // Copy into managed storage so we can read it through the existing secure IPC.
-    const { path: managedPath } = await copyDesktopAttachmentFile({
-      attachmentId: crypto.randomUUID(),
+    const { path: managedPath } = await dependencies.copyAttachmentFile({
+      attachmentId: dependencies.createAttachmentId(),
       sourcePath: filePath,
-      extension: getFileExtension(filePath).slice(1) || null,
+      extension: getFileExtension(filePath) || null,
     });
 
-    const base64 = await readDesktopFileBase64(managedPath);
+    const base64 = await dependencies.readFileBase64(managedPath);
     const bytes = base64ToUint8Array(base64);
 
     result.push({ fileName, mimeType, bytes });
