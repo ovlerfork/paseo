@@ -221,15 +221,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t apps < <(find "${DESKTOP_PACKAGE_PATH}/release" -type d -name 'Paseo.app' -print | sort)
-          if (( ${#apps[@]} == 0 )); then
+          app_path="$(find "${DESKTOP_PACKAGE_PATH}/release" -type d -name 'Paseo.app' -print | sort | head -n 1)"
+          if [[ -z "${app_path}" ]]; then
             echo "::error::No packaged Paseo.app found under ${DESKTOP_PACKAGE_PATH}/release"
             find "${DESKTOP_PACKAGE_PATH}/release" -maxdepth 3 -print || true
             exit 1
           fi
-          node "${DESKTOP_PACKAGE_PATH}/scripts/smoke-packaged-desktop-app.js" --app "${apps[0]}"
+          node "${DESKTOP_PACKAGE_PATH}/scripts/smoke-packaged-desktop-app.js" --app "${app_path}"
 
       - name: Upload macOS desktop artifacts
+        if: ${{ success() || failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: desktop-macos-${{ matrix.electron_arch }}-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
