@@ -17,6 +17,8 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 The current series carries fork-owned source patches again:
 
 - `0001-fix-docker-restore-sandbox-runtime-tooling.patch` restores the Docker sandbox/runtime/tooling layer in upstream Docker source. It pins the runtime to Node 24.16.0 by default, adds a `RUNTIME_IMAGE` build-arg path for Ubuntu-based variants, adds `PASEO_RUNTIME_USER=paseo|root`, and bakes in `bubblewrap`, GitHub CLI, `uv`, pinned npm/Corepack/pnpm, `ripgrep`, `fd`, `pipx`, `rsync`, `openssh-client`, archive helpers, editor/viewer helpers, and Python venv support.
+- `0002-fix-docker-add-fish-completions.patch` adds `fish` and `bash-completion` to both Docker runtime build paths and includes build-time checks for `fish --version` and `/usr/share/bash-completion/bash_completion`.
+- `0003-fix-docker-add-ssh-runtime.patch` adds an optional Docker SSH runtime. It installs `openssh-server`, keeps SSH disabled by default, starts key-only `sshd` when `PASEO_SSH_ENABLED=true`, reads authorized keys from a Compose-friendly config path, and documents the opt-in Compose config mount.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile.source` before publishing to the fork GHCR namespace.
 

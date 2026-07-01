@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Wed, 1 Jul 2026 12:30:00 +0000
+Subject: [PATCH] fix(docker): add fish and shell completions
+
+
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index 405f6049c..29b3709d4 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -43,8 +43,10 @@ RUN set -eux; \
+     apt-get update; \
+     apt-get install -y --no-install-recommends \
+       bash \
++      bash-completion \
+       bubblewrap \
+       fd-find \
++      fish \
+       gh \
+       git \
+       gosu \
+@@ -91,7 +93,9 @@ RUN set -eux; \
+     node --version; \
+     npm --version; \
+     corepack --version; \
++    fish --version; \
+     gh --version | head -n 1; \
++    test -f /usr/share/bash-completion/bash_completion; \
+     uv --version; \
+     rm -rf /var/lib/apt/lists/*
+ 
+diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
+index 7d9d79a4a..c54c309b8 100644
+--- a/docker/base/Dockerfile.source
++++ b/docker/base/Dockerfile.source
+@@ -66,8 +66,10 @@ RUN set -eux; \
+     apt-get update; \
+     apt-get install -y --no-install-recommends \
+       bash \
++      bash-completion \
+       bubblewrap \
+       fd-find \
++      fish \
+       gh \
+       git \
+       gosu \
+@@ -114,7 +116,9 @@ RUN set -eux; \
+     node --version; \
+     npm --version; \
+     corepack --version; \
++    fish --version; \
+     gh --version | head -n 1; \
++    test -f /usr/share/bash-completion/bash_completion; \
+     uv --version; \
+     rm -rf /var/lib/apt/lists/*
+ 
