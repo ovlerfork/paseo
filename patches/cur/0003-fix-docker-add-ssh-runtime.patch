@@ -157,8 +157,8 @@ index 160a2e9fd3d686fe9c08105eeced923abf55f4e0..f4314ad2b26d71b107b13e78043b5554
 +### Optional SSH Access
 +
 +The image can start an SSH daemon for direct shell access to the same runtime
-+user that runs Paseo. SSH is disabled by default and supports key-based access
-+only; password authentication is not enabled.
++user that runs Paseo. SSH is disabled by default and accepts authorized keys
++only.
 +
 +Write your public key to a local file:
 +
@@ -225,7 +225,7 @@ index 160a2e9fd3d686fe9c08105eeced923abf55f4e0..f4314ad2b26d71b107b13e78043b5554
  
  - Set `PASEO_PASSWORD` for any published port or network-reachable deployment.
 +- Leave SSH disabled unless you need shell access. When enabled, publish it only
-+  on trusted networks and use authorized keys rather than passwords.
++  on trusted networks and use authorized keys.
  - Prefer HTTPS at the reverse proxy for direct browser access.
  - Use the Paseo relay for untrusted networks or mobile access when you do not
    want to expose the daemon port directly.
@@ -240,8 +240,8 @@ index be533e66a2fa73893b83387ec624de564bc6dbf9..61f0317758057764303a32cb6ce470d7
 +### Optional SSH Access
 +
 +The image can start an SSH daemon for direct shell access to the same runtime
-+user that runs Paseo. SSH is disabled by default and supports key-based access
-+only; password authentication is not enabled.
++user that runs Paseo. SSH is disabled by default and accepts authorized keys
++only.
 +
 +Write your public key to a local file:
 +
@@ -287,7 +287,7 @@ index be533e66a2fa73893b83387ec624de564bc6dbf9..61f0317758057764303a32cb6ce470d7
  
  Set `PASEO_PASSWORD` for any published port or network-reachable deployment. Use HTTPS at your reverse proxy for browser access outside localhost.
  
-+Leave SSH disabled unless you need shell access. When enabled, publish it only on trusted networks and use authorized keys rather than passwords.
++Leave SSH disabled unless you need shell access. When enabled, publish it only on trusted networks and use authorized keys.
 +
  The static web UI is public on the daemon origin. The daemon API and WebSocket are protected by password auth when configured.
  
