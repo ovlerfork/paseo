@@ -76,6 +76,19 @@ jobs:
           done
           echo "Applied ${APPLIED} patch(es)."
 
+      - name: Sanitize generated branch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          if [[ -d .github/workflows ]]; then
+            rm -rf .github/workflows
+            git add -A .github/workflows
+            if ! git diff --cached --quiet; then
+              git commit -m "Drop upstream workflow files from generated patched branch"
+            fi
+          fi
+
       - name: Update patched branch
         working-directory: source
         run: |
@@ -86,10 +99,12 @@ jobs:
       - name: Resolve metadata
         id: meta
         working-directory: source
+        env:
+          SOURCE_SHA: ${{ env.SOURCE_SHA }}
         run: |
           set -euo pipefail
           patched_sha="$(git rev-parse HEAD)"
-          source_sha="$(git rev-parse --short HEAD)"
+          source_sha="${SOURCE_SHA}"
           version="$(node -p "require('./package.json').version")"
           echo "patched_sha=${patched_sha}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"

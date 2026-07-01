@@ -44,7 +44,7 @@ To add patches again later, create a branch from the upstream ref, make the loca
 
 - `Upstream Sync` keeps `main` aligned to upstream `getpaseo/paseo:main`.
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
-- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, force-updates `patched`, then builds and publishes the source-built image as `ghcr.io/<fork-owner>/paseo`.
-- `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
+- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built image as `ghcr.io/<fork-owner>/paseo`.
+- `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
 
 Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so the current zero-patch series still produces a valid `patched` branch and fork-owned build outputs.
