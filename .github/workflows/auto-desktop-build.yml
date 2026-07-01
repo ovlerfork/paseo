@@ -38,6 +38,9 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'patchset')
     runs-on: ubuntu-latest
+    concurrency:
+      group: patched-prepare-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
     outputs:
       source_sha: ${{ steps.meta.outputs.source_sha }}
       patched_sha: ${{ steps.meta.outputs.patched_sha }}
