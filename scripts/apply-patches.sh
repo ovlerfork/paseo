@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATCH_DIR="${PATCH_DIR:-${SCRIPT_DIR}/../patches/cur}"
 
 if [ ! -d "$PATCH_DIR" ]; then
-  echo "ERROR: Patch directory not found: $PATCH_DIR" >&2
-  exit 1
+  echo "No patch directory found at $PATCH_DIR"
+  exit 0
 fi
 
 shopt -s nullglob

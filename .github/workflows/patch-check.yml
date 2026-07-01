@@ -44,9 +44,11 @@ jobs:
           git config user.email "ci@localhost"
           git config rerere.enabled true
 
+          shopt -s nullglob
+          PATCHES=(../patchset/patches/cur/*.patch)
           FAILED=""
           APPLIED=0
-          for patch in ../patchset/patches/cur/*.patch; do
+          for patch in "${PATCHES[@]}"; do
             NAME=$(basename "$patch")
             echo "==== Applying: $NAME ===="
             if ! git am --3way "$patch"; then
@@ -84,23 +86,10 @@ jobs:
 
       - name: Validate shell scripts
         if: steps.apply.outputs.status == 'ok'
-        working-directory: source
+        working-directory: patchset
         run: |
           set -euo pipefail
-          find docker -type f \( -name '*.sh' -o -path '*/rootfs/usr/local/bin/*' -o -path '*/root-layer/etc/paseo-mods/*/install' -o -path '*/s6-rc.d/*/run' \) -print0 \
-            | xargs -0 -r bash -n
-
-      - name: Validate Docker build definition
-        if: steps.apply.outputs.status == 'ok'
-        working-directory: source
-        run: |
-          set -euo pipefail
-          test -f .github/workflows/docker.yml
-          test -f docker/base/Dockerfile
-          test -f docker/docker-compose.example.yml
-          for agent in claude-code codex copilot opencode pi; do
-            test -f "docker/mods/${agent}/Dockerfile"
-          done
+          bash -n scripts/*.sh
 
       - name: Fail on patch conflict
         if: steps.apply.outputs.status != 'ok'

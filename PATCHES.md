@@ -10,13 +10,13 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 | --- | --- | --- |
 | `patchset` | Patch files, scripts, workflows, and docs. This is the default branch. | Humans |
 | `main` | Tracks upstream `main`. | CI / maintainers |
-| `patched` | Generated branch: upstream plus patches applied. | CI only |
+| `patched` | Optional generated branch: upstream plus patches applied. | CI / maintainers |
 
 ## Current patch series
 
-The current series imports Docker support and Docker publishing/build automation for the Paseo daemon and agent Docker Mods. It also installs `bubblewrap` in the base Docker images and publishes an `ubuntu-sandbox` image variant for agents that need nested Linux sandboxing inside Paseo containers. The sandbox variant bakes in common agent tools such as `gh`, `uv`, `pnpm`, `ripgrep`, `fd`, `pipx`, `rsync`, and archive/SSH utilities so they are available immediately after reboot.
+The current series carries no source patches. Applying the patchset to upstream is expected to be a no-op.
 
-It also carries a desktop attachment fix so generic file uploads keep dotted extensions when copied through Electron-managed storage. This lets archive files such as `.zip` pass the existing desktop IPC extension validation and continue through the normal file upload path.
+The previous Docker, Docker Mods, sandbox image, and desktop attachment patches were removed after upstream added official Docker support and fixed desktop file upload extension handling.
 
 ## Apply locally
 
@@ -36,9 +36,11 @@ From a branch containing upstream plus local patch commits:
 UPSTREAM_REF=upstream/main /path/to/patchset/scripts/refresh-patches.sh
 ```
 
+To add patches again later, create a branch from the upstream ref, make the local commits there, and run `scripts/refresh-patches.sh` with `UPSTREAM_REF` pointing at the same upstream base. Keep each patch focused on a current fork-only delta.
+
 ## Automation
 
 - `Upstream Sync` keeps `main` aligned to upstream `getpaseo/paseo:main`.
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
-- `Auto Docker Publish` updates the generated `patched` branch and publishes Docker images to GHCR when the patch check succeeds.
-- `Auto Desktop Build` updates the generated `patched` branch and uploads Linux, Windows, and unsigned/unnotarized macOS desktop artifacts to the workflow run when the patch check succeeds. It can also be run manually for a single platform.
+
+No workflow currently regenerates `patched` or publishes artifacts because the active patch series is empty.

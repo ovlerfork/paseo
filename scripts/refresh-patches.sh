@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATCH_DIR="${PATCH_DIR:-${SCRIPT_DIR}/../patches/cur}"
 UPSTREAM_REF="${UPSTREAM_REF:-upstream/main}"
+shopt -s nullglob
 
 if ! git rev-parse "$UPSTREAM_REF" >/dev/null 2>&1; then
   echo "ERROR: $UPSTREAM_REF not found. Run: git fetch upstream main" >&2
@@ -16,10 +17,11 @@ if [ "$COMMIT_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-if [ -d "$PATCH_DIR" ] && [ "$(ls -A "$PATCH_DIR" 2>/dev/null)" ]; then
+OLD_PATCHES=("$PATCH_DIR"/*.patch)
+if [ ${#OLD_PATCHES[@]} -gt 0 ]; then
   OLD_DIR="${SCRIPT_DIR}/../patches/old/$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$OLD_DIR"
-  mv "$PATCH_DIR"/*.patch "$OLD_DIR"/ 2>/dev/null || true
+  mv "${OLD_PATCHES[@]}" "$OLD_DIR"/
   echo "Archived previous patches to: $OLD_DIR"
 fi
 
@@ -35,6 +37,9 @@ git format-patch \
 
 echo ""
 echo "Generated patches:"
-ls -1 "$PATCH_DIR"/*.patch
+GENERATED_PATCHES=("$PATCH_DIR"/*.patch)
+if [ ${#GENERATED_PATCHES[@]} -gt 0 ]; then
+  printf '%s\n' "${GENERATED_PATCHES[@]}"
+fi
 echo ""
-echo "Total: $(ls -1 "$PATCH_DIR"/*.patch | wc -l) patches"
+echo "Total: ${#GENERATED_PATCHES[@]} patches"
