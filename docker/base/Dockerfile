@@ -43,8 +43,10 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       bash \
+      bash-completion \
       bubblewrap \
       fd-find \
+      fish \
       gh \
       git \
       gosu \
@@ -91,7 +93,9 @@ RUN set -eux; \
     node --version; \
     npm --version; \
     corepack --version; \
+    fish --version; \
     gh --version | head -n 1; \
+    test -f /usr/share/bash-completion/bash_completion; \
     uv --version; \
     rm -rf /var/lib/apt/lists/*
 
