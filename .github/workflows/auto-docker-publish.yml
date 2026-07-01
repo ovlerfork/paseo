@@ -1,0 +1,156 @@
+name: Auto Docker Publish
+
+on:
+  workflow_run:
+    workflows: ["Patch Check"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream ref to build from"
+        required: false
+        default: "main"
+      paseo_version:
+        description: "Paseo version to build. Must match the patched source package.json version."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  prepare:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'patchset')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      owner: ${{ steps.meta.outputs.owner }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+      patched_sha: ${{ steps.meta.outputs.patched_sha }}
+    steps:
+      - name: Checkout patchset
+        uses: actions/checkout@v4
+        with:
+          ref: patchset
+          path: patchset
+
+      - name: Checkout upstream source
+        uses: actions/checkout@v4
+        with:
+          repository: getpaseo/paseo
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || 'main' }}
+          path: source
+          fetch-depth: 0
+
+      - name: Apply patches
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git config user.name "patch-ci"
+          git config user.email "ci@localhost"
+          git config rerere.enabled true
+
+          shopt -s nullglob
+          PATCHES=(../patchset/patches/cur/*.patch)
+          APPLIED=0
+          for patch in "${PATCHES[@]}"; do
+            NAME=$(basename "$patch")
+            echo "==== Applying: $NAME ===="
+            git am --3way "$patch"
+            APPLIED=$((APPLIED + 1))
+          done
+          echo "Applied ${APPLIED} patch(es)."
+
+      - name: Update patched branch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          git remote add our-fork "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" || true
+          git push our-fork HEAD:refs/heads/patched --force
+
+      - name: Resolve metadata
+        id: meta
+        working-directory: source
+        env:
+          INPUT_PASEO_VERSION: ${{ inputs.paseo_version }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_PASEO_VERSION}" ]]; then
+            version="${INPUT_PASEO_VERSION}"
+          else
+            version="$(node -p "require('./package.json').version")"
+          fi
+          owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          patched_sha="$(git rev-parse HEAD)"
+          source_sha="$(git rev-parse --short HEAD)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "owner=${owner}" >> "$GITHUB_OUTPUT"
+          echo "patched_sha=${patched_sha}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} patched_sha=${patched_sha}"
+
+  publish-source-image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout patched source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patched_sha }}
+          fetch-depth: 0
+
+      - name: Compute tags
+        id: tags
+        env:
+          IMAGE_BASE: ghcr.io/${{ needs.prepare.outputs.owner }}/paseo
+          RESOLVED_VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          tags="${IMAGE_BASE}:${RESOLVED_VERSION}"
+          tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}"
+          tags="${tags}"$'\n'"${IMAGE_BASE}:latest"
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push source image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/base/Dockerfile.source
+          platforms: ${{ env.PLATFORMS }}
+          build-args: |
+            PASEO_VERSION=${{ needs.prepare.outputs.version }}
+          tags: ${{ steps.tags.outputs.tags }}
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=paseo-source
+          cache-to: type=gha,scope=paseo-source,mode=max

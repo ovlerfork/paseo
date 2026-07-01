@@ -16,7 +16,9 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 
 The current series carries no source patches. Applying the patchset to upstream is expected to be a no-op.
 
-The previous Docker, Docker Mods, sandbox image, and desktop attachment patches were removed after upstream added official Docker support and fixed desktop file upload extension handling.
+Customized Dockerized Paseo is currently rebuilt by fork-owned automation rather than source patches. The `Auto Docker Publish` workflow applies the current patchset to upstream, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile.source` before publishing to the fork GHCR namespace.
+
+The previous Docker Mods, sandbox image, and desktop attachment patches were not restored because current upstream already carries the Docker runtime and source-build foundation, and no current source-level customization is justified for those areas.
 
 ## Apply locally
 
@@ -42,5 +44,7 @@ To add patches again later, create a branch from the upstream ref, make the loca
 
 - `Upstream Sync` keeps `main` aligned to upstream `getpaseo/paseo:main`.
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
+- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, force-updates `patched`, then builds and publishes the source-built image as `ghcr.io/<fork-owner>/paseo`.
+- `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
 
-No workflow currently regenerates `patched` or publishes artifacts because the active patch series is empty.
+Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so the current zero-patch series still produces a valid `patched` branch and fork-owned build outputs.
