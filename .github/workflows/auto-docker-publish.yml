@@ -121,9 +121,26 @@ jobs:
   publish-source-image:
     needs: prepare
     runs-on: ubuntu-latest
+    name: Publish ${{ matrix.image.name }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: default
+            cache_scope: paseo-source
+            moving_tag: latest
+            runtime_image: node:24.16.0-bookworm-slim
+            runtime_user: paseo
+            variant: ""
+          - name: ubuntu-sandbox
+            cache_scope: paseo-source-ubuntu-sandbox
+            moving_tag: ubuntu-sandbox
+            runtime_image: ubuntu:24.04
+            runtime_user: root
+            variant: ubuntu-sandbox
     steps:
       - name: Checkout patched source
         uses: actions/checkout@v4
@@ -135,13 +152,21 @@ jobs:
         id: tags
         env:
           IMAGE_BASE: ghcr.io/${{ needs.prepare.outputs.owner }}/paseo
+          MOVING_TAG: ${{ matrix.image.moving_tag }}
           RESOLVED_VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          VARIANT: ${{ matrix.image.variant }}
         run: |
           set -euo pipefail
-          tags="${IMAGE_BASE}:${RESOLVED_VERSION}"
-          tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}"
-          tags="${tags}"$'\n'"${IMAGE_BASE}:latest"
+          if [[ -n "${VARIANT}" ]]; then
+            tags="${IMAGE_BASE}:${RESOLVED_VERSION}-${VARIANT}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}-${VARIANT}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${MOVING_TAG}"
+          else
+            tags="${IMAGE_BASE}:${RESOLVED_VERSION}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${MOVING_TAG}"
+          fi
           {
             echo "tags<<EOF"
             echo "${tags}"
@@ -166,8 +191,10 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.prepare.outputs.version }}
+            PASEO_RUNTIME_USER=${{ matrix.image.runtime_user }}
+            RUNTIME_IMAGE=${{ matrix.image.runtime_image }}
           tags: ${{ steps.tags.outputs.tags }}
           push: true
           provenance: false
-          cache-from: type=gha,scope=paseo-source
-          cache-to: type=gha,scope=paseo-source,mode=max
+          cache-from: type=gha,scope=${{ matrix.image.cache_scope }}
+          cache-to: type=gha,scope=${{ matrix.image.cache_scope }},mode=max

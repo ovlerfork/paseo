@@ -1,0 +1,391 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Wed, 1 Jul 2026 11:01:00 +0000
+Subject: [PATCH] fix(docker): restore sandbox runtime tooling
+
+
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index 904372610..405f6049c 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -1,9 +1,16 @@
+ # syntax=docker/dockerfile:1
+
+-ARG NODE_IMAGE=node:22-bookworm-slim
+-FROM ${NODE_IMAGE}
++ARG RUNTIME_IMAGE=node:24.16.0-bookworm-slim
++FROM ${RUNTIME_IMAGE}
+
++ARG COREPACK_VERSION=0.35.0
++ARG GH_CLI_KEYRING_SHA256=6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b
++ARG NODE_VERSION=24.16.0
++ARG NPM_VERSION=11.17.0
+ ARG PASEO_VERSION=latest
++ARG PASEO_RUNTIME_USER=paseo
++ARG PNPM_VERSION=11.6.0
++ARG UV_VERSION=0.11.21
+
+ ENV HOME=/home/paseo \
+     PASEO_HOME=/home/paseo/.paseo \
+@@ -17,19 +24,75 @@ ENV HOME=/home/paseo \
+     XDG_DATA_HOME=/home/paseo/.local/share \
+     XDG_STATE_HOME=/home/paseo/.local/state \
+     XDG_CACHE_HOME=/home/paseo/.cache \
+-    ONNXRUNTIME_NODE_INSTALL=skip
++    ONNXRUNTIME_NODE_INSTALL=skip \
++    PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}
+
+ RUN set -eux; \
++    case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+     apt-get update; \
+     apt-get install -y --no-install-recommends \
+-      bash \
+       ca-certificates \
+-      curl \
++      curl; \
++    keyring_tmp="$(mktemp)"; \
++    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "${keyring_tmp}"; \
++    printf '%s  %s\n' "${GH_CLI_KEYRING_SHA256}" "${keyring_tmp}" | sha256sum -c -; \
++    install -m 0755 -d /etc/apt/keyrings /etc/apt/sources.list.d; \
++    install -m 0644 "${keyring_tmp}" /etc/apt/keyrings/githubcli-archive-keyring.gpg; \
++    rm -f "${keyring_tmp}"; \
++    printf '%s\n' "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list; \
++    apt-get update; \
++    apt-get install -y --no-install-recommends \
++      bash \
++      bubblewrap \
++      fd-find \
++      gh \
+       git \
+       gosu \
+       lbzip2 \
++      less \
+       openssh-client \
+-      tini; \
++      pipx \
++      python3-venv \
++      ripgrep \
++      rsync \
++      tini \
++      unzip \
++      vim-tiny \
++      xz-utils \
++      zip; \
++    if ! command -v node >/dev/null 2>&1; then \
++      case "$(dpkg --print-architecture)" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "Unsupported Node architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; esac; \
++      node_archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
++      node_tmp="$(mktemp -d)"; \
++      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o "${node_tmp}/SHASUMS256.txt"; \
++      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}" -o "${node_tmp}/${node_archive}"; \
++      (cd "${node_tmp}" && grep " ${node_archive}$" SHASUMS256.txt | sha256sum -c -); \
++      tar -C /usr/local --strip-components=1 -xJf "${node_tmp}/${node_archive}"; \
++      rm -rf "${node_tmp}"; \
++    fi; \
++    if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
++      ln -s /usr/bin/fdfind /usr/local/bin/fd; \
++    fi; \
++    npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
++    corepack enable; \
++    corepack install -g "pnpm@${PNPM_VERSION}"; \
++    COREPACK_ENABLE_NETWORK=0 pnpm --version; \
++    uv_arch="$(dpkg --print-architecture)"; \
++    case "${uv_arch}" in amd64) uv_platform="x86_64-unknown-linux-gnu" ;; arm64) uv_platform="aarch64-unknown-linux-gnu" ;; *) echo "Unsupported uv architecture: ${uv_arch}" >&2; exit 1 ;; esac; \
++    uv_archive="uv-${uv_platform}.tar.gz"; \
++    uv_tmp="$(mktemp -d)"; \
++    curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_archive}" -o "${uv_tmp}/${uv_archive}"; \
++    curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_archive}.sha256" -o "${uv_tmp}/${uv_archive}.sha256"; \
++    (cd "${uv_tmp}" && sha256sum -c "${uv_archive}.sha256"); \
++    tar -C "${uv_tmp}" -xzf "${uv_tmp}/${uv_archive}"; \
++    install -m 0755 "${uv_tmp}/uv-${uv_platform}/uv" /usr/local/bin/uv; \
++    install -m 0755 "${uv_tmp}/uv-${uv_platform}/uvx" /usr/local/bin/uvx; \
++    rm -rf "${uv_tmp}"; \
++    node --version; \
++    npm --version; \
++    corepack --version; \
++    gh --version | head -n 1; \
++    uv --version; \
+     rm -rf /var/lib/apt/lists/*
+
+ RUN set -eux; \
+@@ -43,6 +106,7 @@ RUN set -eux; \
+     node --check "$server_entry"
+
+ RUN set -eux; \
++    case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+     existing_group="$(getent group 1000 | cut -d: -f1 || true)"; \
+     if [ -n "$existing_group" ] && [ "$existing_group" != "paseo" ]; then \
+       groupmod --new-name paseo "$existing_group"; \
+@@ -55,16 +119,26 @@ RUN set -eux; \
+     elif [ -z "$existing_user" ]; then \
+       useradd --uid 1000 --gid paseo --create-home --home-dir /home/paseo --shell /bin/bash paseo; \
+     fi; \
++    if [ "${PASEO_RUNTIME_USER}" = "root" ]; then \
++      runtime_home=/root; \
++      runtime_owner=root:root; \
++    else \
++      runtime_home=/home/paseo; \
++      runtime_owner=paseo:paseo; \
++    fi; \
+     mkdir -p \
+       /workspace \
+-      "$PASEO_HOME" \
+-      "$CLAUDE_CONFIG_DIR" \
+-      "$CODEX_HOME" \
+-      "$XDG_CONFIG_HOME" \
+-      "$XDG_DATA_HOME" \
+-      "$XDG_STATE_HOME" \
+-      "$XDG_CACHE_HOME"; \
+-    chown -R paseo:paseo /home/paseo /workspace
++      "${runtime_home}/.paseo" \
++      "${runtime_home}/.claude" \
++      "${runtime_home}/.codex" \
++      "${runtime_home}/.config" \
++      "${runtime_home}/.local/share" \
++      "${runtime_home}/.local/state" \
++      "${runtime_home}/.cache"; \
++    chown -R "${runtime_owner}" "${runtime_home}" /workspace; \
++    if [ "${PASEO_RUNTIME_USER}" = "paseo" ]; then \
++      chown -R paseo:paseo /home/paseo; \
++    fi
+
+ COPY rootfs/ /
+ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
+diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
+index 0c93f08a0..7d9d79a4a 100644
+--- a/docker/base/Dockerfile.source
++++ b/docker/base/Dockerfile.source
+@@ -1,6 +1,7 @@
+ # syntax=docker/dockerfile:1
+
+-ARG NODE_IMAGE=node:22-bookworm-slim
++ARG NODE_IMAGE=node:24.16.0-bookworm-slim
++ARG RUNTIME_IMAGE=node:24.16.0-bookworm-slim
+ FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS source-pack
+
+ ARG PASEO_VERSION
+@@ -24,7 +25,15 @@ RUN set -eux; \
+     npm pack --workspace=@getpaseo/server --pack-destination /tmp/paseo-packs; \
+     npm pack --workspace=@getpaseo/cli --pack-destination /tmp/paseo-packs
+
+-FROM ${NODE_IMAGE}
++FROM ${RUNTIME_IMAGE}
++
++ARG COREPACK_VERSION=0.35.0
++ARG GH_CLI_KEYRING_SHA256=6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b
++ARG NODE_VERSION=24.16.0
++ARG NPM_VERSION=11.17.0
++ARG PASEO_RUNTIME_USER=paseo
++ARG PNPM_VERSION=11.6.0
++ARG UV_VERSION=0.11.21
+
+ ENV HOME=/home/paseo \
+     PASEO_HOME=/home/paseo/.paseo \
+@@ -38,19 +47,75 @@ ENV HOME=/home/paseo \
+     XDG_DATA_HOME=/home/paseo/.local/share \
+     XDG_STATE_HOME=/home/paseo/.local/state \
+     XDG_CACHE_HOME=/home/paseo/.cache \
+-    ONNXRUNTIME_NODE_INSTALL=skip
++    ONNXRUNTIME_NODE_INSTALL=skip \
++    PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}
+
+ RUN set -eux; \
++    case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+     apt-get update; \
+     apt-get install -y --no-install-recommends \
+-      bash \
+       ca-certificates \
+-      curl \
++      curl; \
++    keyring_tmp="$(mktemp)"; \
++    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "${keyring_tmp}"; \
++    printf '%s  %s\n' "${GH_CLI_KEYRING_SHA256}" "${keyring_tmp}" | sha256sum -c -; \
++    install -m 0755 -d /etc/apt/keyrings /etc/apt/sources.list.d; \
++    install -m 0644 "${keyring_tmp}" /etc/apt/keyrings/githubcli-archive-keyring.gpg; \
++    rm -f "${keyring_tmp}"; \
++    printf '%s\n' "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list; \
++    apt-get update; \
++    apt-get install -y --no-install-recommends \
++      bash \
++      bubblewrap \
++      fd-find \
++      gh \
+       git \
+       gosu \
+       lbzip2 \
++      less \
+       openssh-client \
+-      tini; \
++      pipx \
++      python3-venv \
++      ripgrep \
++      rsync \
++      tini \
++      unzip \
++      vim-tiny \
++      xz-utils \
++      zip; \
++    if ! command -v node >/dev/null 2>&1; then \
++      case "$(dpkg --print-architecture)" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "Unsupported Node architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; esac; \
++      node_archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
++      node_tmp="$(mktemp -d)"; \
++      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o "${node_tmp}/SHASUMS256.txt"; \
++      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}" -o "${node_tmp}/${node_archive}"; \
++      (cd "${node_tmp}" && grep " ${node_archive}$" SHASUMS256.txt | sha256sum -c -); \
++      tar -C /usr/local --strip-components=1 -xJf "${node_tmp}/${node_archive}"; \
++      rm -rf "${node_tmp}"; \
++    fi; \
++    if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
++      ln -s /usr/bin/fdfind /usr/local/bin/fd; \
++    fi; \
++    npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
++    corepack enable; \
++    corepack install -g "pnpm@${PNPM_VERSION}"; \
++    COREPACK_ENABLE_NETWORK=0 pnpm --version; \
++    uv_arch="$(dpkg --print-architecture)"; \
++    case "${uv_arch}" in amd64) uv_platform="x86_64-unknown-linux-gnu" ;; arm64) uv_platform="aarch64-unknown-linux-gnu" ;; *) echo "Unsupported uv architecture: ${uv_arch}" >&2; exit 1 ;; esac; \
++    uv_archive="uv-${uv_platform}.tar.gz"; \
++    uv_tmp="$(mktemp -d)"; \
++    curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_archive}" -o "${uv_tmp}/${uv_archive}"; \
++    curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_archive}.sha256" -o "${uv_tmp}/${uv_archive}.sha256"; \
++    (cd "${uv_tmp}" && sha256sum -c "${uv_archive}.sha256"); \
++    tar -C "${uv_tmp}" -xzf "${uv_tmp}/${uv_archive}"; \
++    install -m 0755 "${uv_tmp}/uv-${uv_platform}/uv" /usr/local/bin/uv; \
++    install -m 0755 "${uv_tmp}/uv-${uv_platform}/uvx" /usr/local/bin/uvx; \
++    rm -rf "${uv_tmp}"; \
++    node --version; \
++    npm --version; \
++    corepack --version; \
++    gh --version | head -n 1; \
++    uv --version; \
+     rm -rf /var/lib/apt/lists/*
+
+ COPY --from=source-pack /tmp/paseo-packs /tmp/paseo-packs
+@@ -64,6 +129,7 @@ RUN set -eux; \
+     node --check "$server_entry"
+
+ RUN set -eux; \
++    case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+     existing_group="$(getent group 1000 | cut -d: -f1 || true)"; \
+     if [ -n "$existing_group" ] && [ "$existing_group" != "paseo" ]; then \
+       groupmod --new-name paseo "$existing_group"; \
+@@ -76,16 +142,26 @@ RUN set -eux; \
+     elif [ -z "$existing_user" ]; then \
+       useradd --uid 1000 --gid paseo --create-home --home-dir /home/paseo --shell /bin/bash paseo; \
+     fi; \
++    if [ "${PASEO_RUNTIME_USER}" = "root" ]; then \
++      runtime_home=/root; \
++      runtime_owner=root:root; \
++    else \
++      runtime_home=/home/paseo; \
++      runtime_owner=paseo:paseo; \
++    fi; \
+     mkdir -p \
+       /workspace \
+-      "$PASEO_HOME" \
+-      "$CLAUDE_CONFIG_DIR" \
+-      "$CODEX_HOME" \
+-      "$XDG_CONFIG_HOME" \
+-      "$XDG_DATA_HOME" \
+-      "$XDG_STATE_HOME" \
+-      "$XDG_CACHE_HOME"; \
+-    chown -R paseo:paseo /home/paseo /workspace
++      "${runtime_home}/.paseo" \
++      "${runtime_home}/.claude" \
++      "${runtime_home}/.codex" \
++      "${runtime_home}/.config" \
++      "${runtime_home}/.local/share" \
++      "${runtime_home}/.local/state" \
++      "${runtime_home}/.cache"; \
++    chown -R "${runtime_owner}" "${runtime_home}" /workspace; \
++    if [ "${PASEO_RUNTIME_USER}" = "paseo" ]; then \
++      chown -R paseo:paseo /home/paseo; \
++    fi
+
+ COPY docker/base/rootfs/ /
+ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
+diff --git a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
+index 2dedd71de..a9138d41f 100644
+--- a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
++++ b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
+@@ -2,21 +2,46 @@
+ set -euo pipefail
+
+ IMAGE_HOME="/home/paseo"
++PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER:-paseo}"
+
+-: "${HOME:=$IMAGE_HOME}"
+-: "${PASEO_HOME:=${HOME}/.paseo}"
++case "$PASEO_RUNTIME_USER" in
++  paseo | root) ;;
++  *)
++    echo "[paseo] FATAL: unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}; expected paseo or root." >&2
++    exit 1
++    ;;
++esac
++
++if [[ "$PASEO_RUNTIME_USER" == "root" && "${HOME:-$IMAGE_HOME}" == "$IMAGE_HOME" ]]; then
++  HOME="/root"
++else
++  : "${HOME:=$IMAGE_HOME}"
++fi
++
++home_default() {
++  local name="$1"
++  local suffix="$2"
++  local current="${!name:-}"
++  local image_default="${IMAGE_HOME}${suffix}"
++  if [[ -z "$current" || ( "$PASEO_RUNTIME_USER" == "root" && "$current" == "$image_default" ) ]]; then
++    printf -v "$name" '%s' "${HOME}${suffix}"
++  fi
++}
++
++home_default PASEO_HOME "/.paseo"
+ : "${PASEO_LISTEN:=0.0.0.0:6767}"
+ : "${PASEO_WEB_UI_ENABLED:=true}"
+ : "${PASEO_LOG_LEVEL:=info}"
+ : "${PASEO_LOG_FORMAT:=json}"
+-: "${CLAUDE_CONFIG_DIR:=${HOME}/.claude}"
+-: "${CODEX_HOME:=${HOME}/.codex}"
+-: "${XDG_CONFIG_HOME:=${HOME}/.config}"
+-: "${XDG_DATA_HOME:=${HOME}/.local/share}"
+-: "${XDG_STATE_HOME:=${HOME}/.local/state}"
+-: "${XDG_CACHE_HOME:=${HOME}/.cache}"
++home_default CLAUDE_CONFIG_DIR "/.claude"
++home_default CODEX_HOME "/.codex"
++home_default XDG_CONFIG_HOME "/.config"
++home_default XDG_DATA_HOME "/.local/share"
++home_default XDG_STATE_HOME "/.local/state"
++home_default XDG_CACHE_HOME "/.cache"
+
+ export HOME
++export PASEO_RUNTIME_USER
+ export PASEO_HOME
+ export PASEO_LISTEN
+ export PASEO_WEB_UI_ENABLED
+@@ -32,7 +57,7 @@ export XDG_CACHE_HOME
+ ensure_dir() {
+   local dir="$1"
+   mkdir -p "$dir"
+-  if [[ "$(id -u)" == "0" ]]; then
++  if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+     local owner
+     owner="$(stat -c "%u" "$dir")"
+     if [[ "$owner" == "0" ]]; then
+@@ -51,7 +76,7 @@ ensure_dir "$XDG_STATE_HOME"
+ ensure_dir "$XDG_CACHE_HOME"
+
+ if [[ "$#" -gt 0 ]]; then
+-  if [[ "$(id -u)" == "0" ]]; then
++  if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+     exec gosu paseo "$@"
+   fi
+   exec "$@"
+@@ -72,7 +97,7 @@ fi
+
+ entry="$(cat /etc/paseo-server-entry)"
+ echo "[paseo] starting daemon on ${PASEO_LISTEN} with web UI ${PASEO_WEB_UI_ENABLED}"
+-if [[ "$(id -u)" == "0" ]]; then
++if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+   exec gosu paseo node "$entry"
+ fi
+ exec node "$entry"

@@ -14,11 +14,13 @@ Upstream is treated as read-only. Local changes are stored as replayable patch f
 
 ## Current patch series
 
-The current series carries no source patches. Applying the patchset to upstream is expected to be a no-op.
+The current series carries fork-owned source patches again:
 
-Customized Dockerized Paseo is currently rebuilt by fork-owned automation rather than source patches. The `Auto Docker Publish` workflow applies the current patchset to upstream, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile.source` before publishing to the fork GHCR namespace.
+- `0001-fix-docker-restore-sandbox-runtime-tooling.patch` restores the Docker sandbox/runtime/tooling layer in upstream Docker source. It pins the runtime to Node 24.16.0 by default, adds a `RUNTIME_IMAGE` build-arg path for Ubuntu-based variants, adds `PASEO_RUNTIME_USER=paseo|root`, and bakes in `bubblewrap`, GitHub CLI, `uv`, pinned npm/Corepack/pnpm, `ripgrep`, `fd`, `pipx`, `rsync`, `openssh-client`, archive helpers, editor/viewer helpers, and Python venv support.
 
-The previous Docker Mods, sandbox image, and desktop attachment patches were not restored because current upstream already carries the Docker runtime and source-build foundation, and no current source-level customization is justified for those areas.
+Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile.source` before publishing to the fork GHCR namespace.
+
+The previous Docker Mods and s6 overlay patches are not restored. Current upstream has a simpler `tini` plus `paseo-docker-entrypoint` runtime, and the sandbox/tooling requirement is covered by patching that current runtime directly.
 
 ## Apply locally
 
@@ -44,7 +46,8 @@ To add patches again later, create a branch from the upstream ref, make the loca
 
 - `Upstream Sync` keeps `main` aligned to upstream `getpaseo/paseo:main`.
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
-- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built image as `ghcr.io/<fork-owner>/paseo`.
+- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built default image as `ghcr.io/<fork-owner>/paseo:<version>`, `:<version>-<source-sha>`, and `:latest`.
+- The same workflow also publishes the root-runtime Ubuntu sandbox variant as `:<version>-ubuntu-sandbox`, `:<version>-<source-sha>-ubuntu-sandbox`, and `:ubuntu-sandbox`.
 - `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
 
-Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so the current zero-patch series still produces a valid `patched` branch and fork-owned build outputs.
+Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so they still produce a valid `patched` branch and fork-owned build outputs if the patch series is pruned again later.
