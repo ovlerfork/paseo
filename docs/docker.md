@@ -69,6 +69,49 @@ services:
       - ./workspace:/workspace
 ```
 
+### Optional SSH Access
+
+The image can start an SSH daemon for direct shell access to the same runtime
+user that runs Paseo. SSH is disabled by default and accepts authorized keys
+only.
+
+Write your public key to a local file:
+
+```bash
+cp ~/.ssh/id_ed25519.pub paseo_ssh_authorized_keys.pub
+```
+
+Then enable SSH in Compose with a config mount:
+
+```yaml
+services:
+  paseo:
+    ports:
+      - "6767:6767"
+      - "2222:2222"
+    environment:
+      PASEO_PASSWORD: "change-me"
+      PASEO_SSH_ENABLED: "true"
+      PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
+    configs:
+      - source: paseo_ssh_authorized_keys
+        target: /run/configs/paseo_ssh_authorized_keys
+
+configs:
+  paseo_ssh_authorized_keys:
+    file: ./paseo_ssh_authorized_keys.pub
+```
+
+Connect as the runtime user:
+
+```bash
+ssh -p 2222 paseo@localhost
+```
+
+The SSH port can be changed with `PASEO_SSH_PORT`. If you build or run the
+image with `PASEO_RUNTIME_USER=root`, connect as `root`; root SSH login still
+requires a key.
+
 ## Installing Agents
 
 The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
@@ -121,11 +164,14 @@ or `compose.environment`; Paseo passes them to launched agents.
 
 The image defaults:
 
-| Variable       | Default              |
-| -------------- | -------------------- |
-| `HOME`         | `/home/paseo`        |
-| `PASEO_HOME`   | `/home/paseo/.paseo` |
-| `PASEO_LISTEN` | `0.0.0.0:6767`       |
+| Variable                         | Default                                  |
+| -------------------------------- | ---------------------------------------- |
+| `HOME`                           | `/home/paseo`                            |
+| `PASEO_HOME`                     | `/home/paseo/.paseo`                     |
+| `PASEO_LISTEN`                   | `0.0.0.0:6767`                           |
+| `PASEO_SSH_ENABLED`              | `false`                                  |
+| `PASEO_SSH_AUTHORIZED_KEYS_FILE` | `/run/configs/paseo_ssh_authorized_keys` |
+| `PASEO_SSH_PORT`                 | `2222`                                   |
 
 If you bind-mount host directories on Linux, make sure the container user can
 write them. The built-in `paseo` user has uid/gid `1000:1000`. For a different
@@ -176,6 +222,8 @@ IPs and `localhost` are allowed by default.
 ## Security
 
 - Set `PASEO_PASSWORD` for any published port or network-reachable deployment.
+- Leave SSH disabled unless you need shell access. When enabled, publish it only
+  on trusted networks and use authorized keys.
 - Prefer HTTPS at the reverse proxy for direct browser access.
 - Use the Paseo relay for untrusted networks or mobile access when you do not
   want to expose the daemon port directly.

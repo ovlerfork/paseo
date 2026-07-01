@@ -65,6 +65,49 @@ Start it:
 docker compose up -d
 ```
 
+### Optional SSH Access
+
+The image can start an SSH daemon for direct shell access to the same runtime
+user that runs Paseo. SSH is disabled by default and accepts authorized keys
+only.
+
+Write your public key to a local file:
+
+```bash
+cp ~/.ssh/id_ed25519.pub paseo_ssh_authorized_keys.pub
+```
+
+Then enable SSH in Compose with a config mount:
+
+```yaml
+services:
+  paseo:
+    ports:
+      - "6767:6767"
+      - "2222:2222"
+    environment:
+      PASEO_PASSWORD: "change-me"
+      PASEO_SSH_ENABLED: "true"
+      PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
+    configs:
+      - source: paseo_ssh_authorized_keys
+        target: /run/configs/paseo_ssh_authorized_keys
+
+configs:
+  paseo_ssh_authorized_keys:
+    file: ./paseo_ssh_authorized_keys.pub
+```
+
+Connect as the runtime user:
+
+```bash
+ssh -p 2222 paseo@localhost
+```
+
+The SSH port can be changed with `PASEO_SSH_PORT`. If you build or run the
+image with `PASEO_RUNTIME_USER=root`, connect as `root`; root SSH login still
+requires a key.
+
 ## Install agent CLIs
 
 Create a child image for the providers you want available:
@@ -148,6 +191,8 @@ IPs and `localhost` are allowed by default.
 ## Security
 
 Set `PASEO_PASSWORD` for any published port or network-reachable deployment. Use HTTPS at your reverse proxy for browser access outside localhost.
+
+Leave SSH disabled unless you need shell access. When enabled, publish it only on trusted networks and use authorized keys.
 
 The static web UI is public on the daemon origin. The daemon API and WebSocket are protected by password auth when configured.
 
