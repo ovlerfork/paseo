@@ -26,7 +26,7 @@ index ea03d8daf..fba77177f 100644
 +    fish --version; \
      gh --version | head -n 1; \
 +    test -f /usr/share/bash-completion/bash_completion; \
-     inotifywait --help >/dev/null; \
+     command -v inotifywait >/dev/null; \
      uv --version; \
      rm -rf /var/lib/apt/lists/*
 diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
@@ -51,6 +51,6 @@ index 3c5d9958c..6e912d754 100644
 +    fish --version; \
      gh --version | head -n 1; \
 +    test -f /usr/share/bash-completion/bash_completion; \
-     inotifywait --help >/dev/null; \
+     command -v inotifywait >/dev/null; \
      uv --version; \
      rm -rf /var/lib/apt/lists/*

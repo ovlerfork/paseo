@@ -104,7 +104,7 @@ index 904372610..405f6049c 100644
 +    npm --version; \
 +    corepack --version; \
 +    gh --version | head -n 1; \
-+    inotifywait --help >/dev/null; \
++    command -v inotifywait >/dev/null; \
 +    uv --version; \
      rm -rf /var/lib/apt/lists/*
 
@@ -259,7 +259,7 @@ index 0c93f08a0..7d9d79a4a 100644
 +    npm --version; \
 +    corepack --version; \
 +    gh --version | head -n 1; \
-+    inotifywait --help >/dev/null; \
++    command -v inotifywait >/dev/null; \
 +    uv --version; \
      rm -rf /var/lib/apt/lists/*
 
