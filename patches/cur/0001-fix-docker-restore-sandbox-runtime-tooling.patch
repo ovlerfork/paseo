@@ -27,7 +27,7 @@ index 904372610..405f6049c 100644
 
  ENV HOME=/home/paseo \
      PASEO_HOME=/home/paseo/.paseo \
-@@ -17,19 +24,75 @@ ENV HOME=/home/paseo \
+@@ -17,19 +24,77 @@ ENV HOME=/home/paseo \
      XDG_DATA_HOME=/home/paseo/.local/share \
      XDG_STATE_HOME=/home/paseo/.local/state \
      XDG_CACHE_HOME=/home/paseo/.cache \
@@ -58,6 +58,7 @@ index 904372610..405f6049c 100644
 +      gh \
        git \
        gosu \
++      inotify-tools \
        lbzip2 \
 +      less \
        openssh-client \
@@ -103,11 +104,12 @@ index 904372610..405f6049c 100644
 +    npm --version; \
 +    corepack --version; \
 +    gh --version | head -n 1; \
++    inotifywait --help >/dev/null; \
 +    uv --version; \
      rm -rf /var/lib/apt/lists/*
 
  RUN set -eux; \
-@@ -43,6 +106,7 @@ RUN set -eux; \
+@@ -43,6 +108,7 @@ RUN set -eux; \
      node --check "$server_entry"
 
  RUN set -eux; \
@@ -115,7 +117,7 @@ index 904372610..405f6049c 100644
      existing_group="$(getent group 1000 | cut -d: -f1 || true)"; \
      if [ -n "$existing_group" ] && [ "$existing_group" != "paseo" ]; then \
        groupmod --new-name paseo "$existing_group"; \
-@@ -55,16 +119,26 @@ RUN set -eux; \
+@@ -55,16 +121,26 @@ RUN set -eux; \
      elif [ -z "$existing_user" ]; then \
        useradd --uid 1000 --gid paseo --create-home --home-dir /home/paseo --shell /bin/bash paseo; \
      fi; \
@@ -180,7 +182,7 @@ index 0c93f08a0..7d9d79a4a 100644
 
  ENV HOME=/home/paseo \
      PASEO_HOME=/home/paseo/.paseo \
-@@ -38,19 +47,75 @@ ENV HOME=/home/paseo \
+@@ -38,19 +47,77 @@ ENV HOME=/home/paseo \
      XDG_DATA_HOME=/home/paseo/.local/share \
      XDG_STATE_HOME=/home/paseo/.local/state \
      XDG_CACHE_HOME=/home/paseo/.cache \
@@ -211,6 +213,7 @@ index 0c93f08a0..7d9d79a4a 100644
 +      gh \
        git \
        gosu \
++      inotify-tools \
        lbzip2 \
 +      less \
        openssh-client \
@@ -256,11 +259,12 @@ index 0c93f08a0..7d9d79a4a 100644
 +    npm --version; \
 +    corepack --version; \
 +    gh --version | head -n 1; \
++    inotifywait --help >/dev/null; \
 +    uv --version; \
      rm -rf /var/lib/apt/lists/*
 
  COPY --from=source-pack /tmp/paseo-packs /tmp/paseo-packs
-@@ -64,6 +129,7 @@ RUN set -eux; \
+@@ -64,6 +131,7 @@ RUN set -eux; \
      node --check "$server_entry"
 
  RUN set -eux; \
@@ -268,7 +272,7 @@ index 0c93f08a0..7d9d79a4a 100644
      existing_group="$(getent group 1000 | cut -d: -f1 || true)"; \
      if [ -n "$existing_group" ] && [ "$existing_group" != "paseo" ]; then \
        groupmod --new-name paseo "$existing_group"; \
-@@ -76,16 +142,26 @@ RUN set -eux; \
+@@ -76,16 +144,26 @@ RUN set -eux; \
      elif [ -z "$existing_user" ]; then \
        useradd --uid 1000 --gid paseo --create-home --home-dir /home/paseo --shell /bin/bash paseo; \
      fi; \
