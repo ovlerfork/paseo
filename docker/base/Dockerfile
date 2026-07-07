@@ -79,6 +79,7 @@ RUN set -eux; \
       lbzip2 \
       less \
       openssh-client \
+      openssh-server \
       pipx \
       procps \
       python3-venv \
@@ -177,7 +178,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
 
 WORKDIR /workspace
 
-EXPOSE 6767
+EXPOSE 6767 2222
 VOLUME ["/home/paseo"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
