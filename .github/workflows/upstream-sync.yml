@@ -29,11 +29,10 @@ jobs:
         id: update
         run: |
           set -euo pipefail
-          LOCAL=$(git rev-parse main)
           REMOTE=$(git rev-parse upstream/main)
-          if [ "$LOCAL" = "$REMOTE" ]; then
+          if git merge-base --is-ancestor "$REMOTE" main; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "main already matches upstream."
+            echo "main already contains upstream $REMOTE."
             exit 0
           fi
           git checkout main
@@ -57,5 +56,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run patch-check.yml \
+            --repo "$GITHUB_REPOSITORY" \
             --ref patchset \
             -f upstream_ref="${{ steps.update.outputs.upstream_sha }}"
