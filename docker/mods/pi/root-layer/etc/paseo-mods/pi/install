@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v pi >/dev/null 2>&1; then
+  echo "[mod:pi] pi already on PATH; skipping install."
+  exit 0
+fi
+
+PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
+echo "[mod:pi] installing ${PI_NPM_PACKAGE} with pnpm"
+paseo-mod-install node --ignore-scripts "${PI_NPM_PACKAGE}"
+
+PI_BIN="$(command -v pi)" || {
+  echo "[mod:pi] ERROR: ${PI_NPM_PACKAGE} did not install a 'pi' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:pi] done (${PI_BIN})"
