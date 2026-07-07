@@ -117,29 +117,53 @@ The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
 other agent CLIs. That keeps the default image small and avoids coupling Paseo
 releases to third-party agent release cycles.
 
-Create a child image for the agents you use:
-
-```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
-
-USER root
-RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
-```
-
-Build it:
+Use Docker Mods to install agent CLIs at container startup:
 
 ```bash
-docker build -f Dockerfile -t paseo-with-agents .
+docker run -d --name paseo \
+  -p 6767:6767 \
+  -e PASEO_PASSWORD=change-me \
+  -e 'DOCKER_MODS=ghcr.io/ovlerfork/mods:codex|ghcr.io/ovlerfork/mods:claude-code' \
+  -v "$PWD/paseo-home:/home/paseo" \
+  -v "$PWD:/workspace" \
+  ghcr.io/ovlerfork/paseo:latest
 ```
 
-Then use `image: paseo-with-agents` in Compose.
+`DOCKER_MODS` is a pipe-separated list of mod images. Each mod image carries a
+small install hook under `/etc/paseo-mods/<name>/install`. The base entrypoint
+pulls those mod layers, extracts them, and runs the hooks before starting the
+daemon. A configured mod failure stops startup by default so missing agent CLIs
+do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
+starting the daemon.
 
-Leave the child image user as root. The base entrypoint uses root only for
-first-run directory setup, then drops the daemon and launched agents to the
-non-root `paseo` user.
+Available mod tags:
 
-An example child image is in
-[`docker/Dockerfile.agents.example`](../docker/Dockerfile.agents.example).
+| Mod tag       | Package                           | Binary     |
+| ------------- | --------------------------------- | ---------- |
+| `claude-code` | `@anthropic-ai/claude-code`       | `claude`   |
+| `codex`       | `@openai/codex`                   | `codex`    |
+| `copilot`     | `@github/copilot`                 | `copilot`  |
+| `opencode`    | `opencode-ai`                     | `opencode` |
+| `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
+
+Node-based mod hooks install global packages with `pnpm` first and fall back to
+`npm` only when `pnpm` is unavailable. Python-based mod hooks should use
+`paseo-mod-install python <package>`, which prefers `uv tool install` and falls
+back to `pipx`.
+
+Codex is intentionally installed through the `codex` mod instead of baked into
+the base image, so a newly created container can pick up the current
+`@openai/codex` release without waiting for a new Paseo image.
+
+You can still create a child image when you want a fully offline or internally
+mirrored agent install:
+
+```Dockerfile
+FROM ghcr.io/ovlerfork/paseo:latest
+
+USER root
+RUN pnpm add -g @openai/codex @anthropic-ai/claude-code opencode-ai
+```
 
 You can also mount credentials from the host or run agent login once inside the
 container:
