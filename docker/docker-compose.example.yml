@@ -9,13 +9,24 @@ services:
     restart: unless-stopped
     ports:
       - "6767:6767"
+      # Uncomment to expose the optional key-only SSH daemon.
+      # - "2222:2222"
     environment:
       PASEO_PASSWORD: "change-me"
       # Add DNS names you use to reach this container. IPs and localhost are
       # already allowed by default.
       # PASEO_HOSTNAMES: "paseo.example.com,.lan"
+      # PASEO_SSH_ENABLED: "true"
+      # PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
     volumes:
       # Persistent daemon state and agent credentials/config.
       - ./paseo-home:/home/paseo
       # Code visible to Paseo and the agents it launches.
       - ./workspace:/workspace
+    # configs:
+    #   - source: paseo_ssh_authorized_keys
+    #     target: /run/configs/paseo_ssh_authorized_keys
+
+# configs:
+#   paseo_ssh_authorized_keys:
+#     file: ./paseo_ssh_authorized_keys.pub
