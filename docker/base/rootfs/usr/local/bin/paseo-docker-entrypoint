@@ -33,6 +33,8 @@ home_default PASEO_HOME "/.paseo"
 : "${PASEO_WEB_UI_ENABLED:=true}"
 : "${PASEO_LOG_LEVEL:=info}"
 : "${PASEO_LOG_FORMAT:=json}"
+: "${PASEO_SSH_AUTHORIZED_KEYS_FILE:=/run/configs/paseo_ssh_authorized_keys}"
+: "${PASEO_SSH_PORT:=2222}"
 home_default CLAUDE_CONFIG_DIR "/.claude"
 home_default CODEX_HOME "/.codex"
 home_default XDG_CONFIG_HOME "/.config"
@@ -47,6 +49,8 @@ export PASEO_LISTEN
 export PASEO_WEB_UI_ENABLED
 export PASEO_LOG_LEVEL
 export PASEO_LOG_FORMAT
+export PASEO_SSH_AUTHORIZED_KEYS_FILE
+export PASEO_SSH_PORT
 export CLAUDE_CONFIG_DIR
 export CODEX_HOME
 export XDG_CONFIG_HOME
@@ -74,6 +78,48 @@ ensure_dir "$XDG_CONFIG_HOME"
 ensure_dir "$XDG_DATA_HOME"
 ensure_dir "$XDG_STATE_HOME"
 ensure_dir "$XDG_CACHE_HOME"
+
+start_sshd() {
+  case "${PASEO_SSH_ENABLED:-false}" in
+    true | 1 | yes) ;;
+    false | 0 | no | "")
+      return
+      ;;
+    *)
+      echo "[paseo] FATAL: unsupported PASEO_SSH_ENABLED=${PASEO_SSH_ENABLED}; expected true or false." >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ "$(id -u)" != "0" ]]; then
+    echo "[paseo] FATAL: PASEO_SSH_ENABLED requires the container entrypoint to run as root." >&2
+    exit 1
+  fi
+  if [[ ! -s "$PASEO_SSH_AUTHORIZED_KEYS_FILE" ]]; then
+    echo "[paseo] FATAL: PASEO_SSH_AUTHORIZED_KEYS_FILE is missing or empty: ${PASEO_SSH_AUTHORIZED_KEYS_FILE}" >&2
+    exit 1
+  fi
+
+  local ssh_dir="$HOME/.ssh"
+  install -d -m 700 "$ssh_dir"
+  install -m 600 "$PASEO_SSH_AUTHORIZED_KEYS_FILE" "$ssh_dir/authorized_keys"
+  if [[ "$PASEO_RUNTIME_USER" == "paseo" ]]; then
+    chown -R paseo:paseo "$ssh_dir"
+  fi
+  install -d -m 755 /run/sshd
+  ssh-keygen -A
+
+  echo "[paseo] starting sshd on port ${PASEO_SSH_PORT} for ${PASEO_RUNTIME_USER}"
+  /usr/sbin/sshd \
+    -o AuthorizedKeysFile=.ssh/authorized_keys \
+    -o KbdInteractiveAuthentication=no \
+    -o PasswordAuthentication=no \
+    -o PermitRootLogin=prohibit-password \
+    -o PubkeyAuthentication=yes \
+    -p "$PASEO_SSH_PORT"
+}
+
+start_sshd
 
 if [[ "$#" -gt 0 ]]; then
   if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
