@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Tue, 7 Jul 2026 14:46:54 +0000
+Subject: [PATCH] fix(docker): add extended runtime tools
+
+
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index f0fada26c..4062e75d2 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -71,6 +71,7 @@ RUN set -eux; \
+     apt-get install -y --no-install-recommends \
+       bash \
+       bash-completion \
++      btop \
+       bubblewrap \
+       busybox-static \
+       bzip2 \
+@@ -80,7 +81,9 @@ RUN set -eux; \
+       fish \
+       gh \
+       git \
++      gnupg \
+       gosu \
++      htop \
+       inotify-tools \
+       iproute2 \
+       iputils-ping \
+@@ -89,20 +92,30 @@ RUN set -eux; \
+       less \
+       lsof \
+       nano \
++      net-tools \
+       netcat-openbsd \
+       openssh-client \
+       openssh-server \
++      openssl \
+       pipx \
+       procps \
+       psmisc \
+       python3-venv \
+       ripgrep \
+       rsync \
++      socat \
++      sqlite3 \
++      strace \
++      sudo \
++      tcpdump \
+       tini \
++      tmux \
++      traceroute \
+       tree \
+       unzip \
+       vim-tiny \
+       xz-utils \
++      yq \
+       zip; \
+     if ! command -v node >/dev/null 2>&1; then \
+       case "$(dpkg --print-architecture)" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "Unsupported Node architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; esac; \
+@@ -140,11 +153,25 @@ RUN set -eux; \
+     gh --version | head -n 1; \
+     busybox --help >/dev/null; \
+     test -f /usr/share/bash-completion/bash_completion; \
++    command -v btop >/dev/null; \
++    command -v gpg >/dev/null; \
++    command -v htop >/dev/null; \
++    command -v ifconfig >/dev/null; \
+     command -v inotifywait >/dev/null; \
+     ip -Version >/dev/null; \
+     jq --version; \
+     nano --version | head -n 1; \
+     nc -h >/dev/null 2>&1 || true; \
++    command -v openssl >/dev/null; \
++    command -v rg >/dev/null; \
++    command -v socat >/dev/null; \
++    command -v sqlite3 >/dev/null; \
++    command -v strace >/dev/null; \
++    command -v sudo >/dev/null; \
++    command -v tcpdump >/dev/null; \
++    command -v tmux >/dev/null; \
++    command -v traceroute >/dev/null; \
++    command -v yq >/dev/null; \
+     uv --version; \
+     rm -rf /var/lib/apt/lists/*
+ 
