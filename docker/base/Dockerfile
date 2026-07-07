@@ -49,8 +49,10 @@ ENV HOME=/home/paseo \
     XDG_DATA_HOME=/home/paseo/.local/share \
     XDG_STATE_HOME=/home/paseo/.local/state \
     XDG_CACHE_HOME=/home/paseo/.cache \
+    PNPM_HOME=/usr/local/share/pnpm \
     ONNXRUNTIME_NODE_INSTALL=skip \
     PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}
+ENV PATH="${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}"
 
 RUN set -eux; \
     case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
@@ -70,22 +72,34 @@ RUN set -eux; \
       bash \
       bash-completion \
       bubblewrap \
+      busybox-static \
+      bzip2 \
+      dnsutils \
       fd-find \
+      file \
       fish \
       gh \
       git \
       gosu \
       inotify-tools \
+      iproute2 \
+      iputils-ping \
+      jq \
       lbzip2 \
       less \
+      lsof \
+      nano \
+      netcat-openbsd \
       openssh-client \
       openssh-server \
       pipx \
       procps \
+      psmisc \
       python3-venv \
       ripgrep \
       rsync \
       tini \
+      tree \
       unzip \
       vim-tiny \
       xz-utils \
@@ -103,6 +117,7 @@ RUN set -eux; \
     if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
       ln -s /usr/bin/fdfind /usr/local/bin/fd; \
     fi; \
+    install -d -m 0755 "${PNPM_HOME}" "${PNPM_HOME}/bin" /usr/local/share/uv/tools; \
     npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
     corepack enable; \
     corepack install -g "pnpm@${PNPM_VERSION}"; \
@@ -123,8 +138,13 @@ RUN set -eux; \
     corepack --version; \
     fish --version; \
     gh --version | head -n 1; \
+    busybox --help >/dev/null; \
     test -f /usr/share/bash-completion/bash_completion; \
     command -v inotifywait >/dev/null; \
+    ip -Version >/dev/null; \
+    jq --version; \
+    nano --version | head -n 1; \
+    nc -h >/dev/null 2>&1 || true; \
     uv --version; \
     rm -rf /var/lib/apt/lists/*
 
@@ -174,7 +194,7 @@ RUN set -eux; \
     fi
 
 COPY docker/base/rootfs/ /
-RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
+RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install
 
 WORKDIR /workspace
 

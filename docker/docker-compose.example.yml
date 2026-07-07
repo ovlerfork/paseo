@@ -16,6 +16,10 @@ services:
       # Add DNS names you use to reach this container. IPs and localhost are
       # already allowed by default.
       # PASEO_HOSTNAMES: "paseo.example.com,.lan"
+      # Install agent CLIs at container startup with Docker Mods.
+      # DOCKER_MODS: "ghcr.io/ovlerfork/mods:codex|ghcr.io/ovlerfork/mods:claude-code"
+      # Set false if you prefer the daemon to start even when a mod install fails.
+      # DOCKER_MODS_STRICT: "true"
       # PASEO_SSH_ENABLED: "true"
       # PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
     volumes:

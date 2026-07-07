@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v codex >/dev/null 2>&1; then
+  echo "[mod:codex] codex already on PATH; skipping install."
+  exit 0
+fi
+
+echo "[mod:codex] installing @openai/codex with pnpm"
+paseo-mod-install node @openai/codex
+echo "[mod:codex] done ($(command -v codex))"

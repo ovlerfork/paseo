@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODS="${DOCKER_MODS:-}"
+if [[ -z "${MODS// }" ]]; then
+  echo "[mods] DOCKER_MODS not set; no agent mods to apply."
+  exit 0
+fi
+
+STRICT="${DOCKER_MODS_STRICT:-true}"
+case "$STRICT" in
+  true | 1 | yes) STRICT=true ;;
+  false | 0 | no) STRICT=false ;;
+  *)
+    echo "[mods] FATAL: unsupported DOCKER_MODS_STRICT=${DOCKER_MODS_STRICT}; expected true or false." >&2
+    exit 1
+    ;;
+esac
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+arch="$(uname -m)"
+case "$arch" in
+  x86_64) GOARCH=amd64 ;;
+  aarch64 | arm64) GOARCH=arm64 ;;
+  *) GOARCH=amd64 ;;
+esac
+
+parse_ref() {
+  local ref="$1" first rest
+  first="${ref%%/*}"
+  if [[ "$first" == *.* || "$first" == *:* || "$first" == "localhost" ]]; then
+    REG="$first"
+    rest="${ref#*/}"
+  else
+    REG="docker.io"
+    rest="$ref"
+  fi
+
+  if [[ "$rest" == *:* ]]; then
+    TAG="${rest##*:}"
+    REPO="${rest%:*}"
+  else
+    TAG="latest"
+    REPO="$rest"
+  fi
+
+  if [[ "$REG" == "docker.io" && "$REPO" != */* ]]; then
+    REPO="library/$REPO"
+  fi
+}
+
+auth_token() {
+  local registry="$1" repo="$2"
+  case "$registry" in
+    ghcr.io)
+      curl -fsSL "https://ghcr.io/token?scope=repository:${repo}:pull" | jq -r '.token // empty'
+      ;;
+    docker.io | registry-1.docker.io)
+      curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull" | jq -r '.token // empty'
+      ;;
+    *)
+      curl -fsSL "https://${registry}/token?scope=repository:${repo}:pull" 2>/dev/null | jq -r '.token // empty'
+      ;;
+  esac
+}
+
+registry_host() {
+  case "$1" in
+    docker.io) echo "registry-1.docker.io" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+ACCEPT_MANIFEST="application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json"
+
+extract_layer() {
+  local blob="$1" digest="$2"
+  if tar -C / -xzpf "$blob" 2>/dev/null; then
+    return 0
+  fi
+  if tar -C / -xpf "$blob" 2>/dev/null; then
+    return 0
+  fi
+  echo "[mods] ERROR: failed to extract layer ${digest}." >&2
+  return 1
+}
+
+apply_mod() {
+  local ref="$1"
+  parse_ref "$ref"
+
+  local host token auth manifest digest layers i d blob
+  host="$(registry_host "$REG")"
+  token="$(auth_token "$REG" "$REPO" || true)"
+  auth=()
+  [[ -n "$token" ]] && auth=(-H "Authorization: Bearer ${token}")
+
+  echo "[mods] applying ${ref} (registry=${REG} repo=${REPO} tag=${TAG})"
+  manifest="$(curl -fsSL "${auth[@]}" -H "Accept: ${ACCEPT_MANIFEST}" \
+    "https://${host}/v2/${REPO}/manifests/${TAG}")" || {
+    echo "[mods] ERROR: failed to fetch manifest for ${ref}." >&2
+    return 1
+  }
+
+  if jq -e '.manifests' <<< "$manifest" >/dev/null 2>&1; then
+    digest="$(jq -r \
+      --arg arch "$GOARCH" \
+      '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$arch) | .digest' \
+      <<< "$manifest" | head -n1)"
+    if [[ -z "$digest" ]]; then
+      digest="$(jq -r '.manifests[0].digest' <<< "$manifest")"
+    fi
+    manifest="$(curl -fsSL "${auth[@]}" -H "Accept: ${ACCEPT_MANIFEST}" \
+      "https://${host}/v2/${REPO}/manifests/${digest}")" || {
+      echo "[mods] ERROR: failed to fetch platform manifest for ${ref}." >&2
+      return 1
+    }
+  fi
+
+  layers="$(jq -r '.layers[].digest' <<< "$manifest")"
+  if [[ -z "$layers" ]]; then
+    echo "[mods] WARNING: ${ref} has no layers; nothing to extract." >&2
+    return 0
+  fi
+
+  i=0
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
+    i=$((i + 1))
+    blob="${WORK}/layer-${i}.tar"
+    curl -fsSL "${auth[@]}" -o "$blob" \
+      "https://${host}/v2/${REPO}/blobs/${d}" || {
+      echo "[mods] ERROR: failed to download layer ${d}." >&2
+      return 1
+    }
+    extract_layer "$blob" "$d" || return 1
+    rm -f "$blob"
+  done <<< "$layers"
+
+  echo "[mods] extracted ${ref}"
+}
+
+home_scoped_value() {
+  local name="$1" suffix="$2" value image_default
+  value="${!name:-}"
+  image_default="/home/paseo${suffix}"
+  if [[ -z "$value" || ( "${HOME:-/home/paseo}" != "/home/paseo" && "$value" == "$image_default" ) ]]; then
+    printf '%s' "${HOME:-/home/paseo}${suffix}"
+  else
+    printf '%s' "$value"
+  fi
+}
+
+run_install_hooks() {
+  shopt -s nullglob
+
+  local install_home="/root"
+  local pnpm_home="${PNPM_HOME:-/usr/local/share/pnpm}"
+  local uv_tool_dir="${UV_TOOL_DIR:-/usr/local/share/uv/tools}"
+  local uv_tool_bin_dir="${UV_TOOL_BIN_DIR:-/usr/local/bin}"
+  mkdir -p \
+    "${install_home}/.claude" \
+    "${install_home}/.codex" \
+    "${install_home}/.config" \
+    "${install_home}/.local/share" \
+    "${install_home}/.local/state" \
+    "${install_home}/.cache" \
+    "$pnpm_home" \
+    "${pnpm_home}/bin" \
+    "$uv_tool_dir" \
+    "$uv_tool_bin_dir" \
+    /tmp/paseo-npm-cache
+
+  local hook dir status=0
+  for hook in /etc/paseo-mods/*/install; do
+    dir="$(dirname "$hook")"
+    if [[ -f "${dir}/.done" ]]; then
+      continue
+    fi
+    echo "[mods] running install hook: ${hook}"
+    chmod +x "$hook" || true
+    if env \
+      HOME="$install_home" \
+      PASEO_HOME="${install_home}/.paseo" \
+      CLAUDE_CONFIG_DIR="${install_home}/.claude" \
+      CODEX_HOME="${install_home}/.codex" \
+      XDG_CONFIG_HOME="${install_home}/.config" \
+      XDG_DATA_HOME="${install_home}/.local/share" \
+      XDG_STATE_HOME="${install_home}/.local/state" \
+      XDG_CACHE_HOME="${install_home}/.cache" \
+      PNPM_HOME="$pnpm_home" \
+      PATH="${pnpm_home}/bin:${pnpm_home}:${PATH}" \
+      npm_config_cache=/tmp/paseo-npm-cache \
+      UV_TOOL_DIR="$uv_tool_dir" \
+      UV_TOOL_BIN_DIR="$uv_tool_bin_dir" \
+      PASEO_USER_HOME="${HOME:-/home/paseo}" \
+      PASEO_USER_PASEO_HOME="$(home_scoped_value PASEO_HOME "/.paseo")" \
+      PASEO_USER_CLAUDE_CONFIG_DIR="$(home_scoped_value CLAUDE_CONFIG_DIR "/.claude")" \
+      PASEO_USER_CODEX_HOME="$(home_scoped_value CODEX_HOME "/.codex")" \
+      PASEO_USER_XDG_CONFIG_HOME="$(home_scoped_value XDG_CONFIG_HOME "/.config")" \
+      PASEO_USER_XDG_DATA_HOME="$(home_scoped_value XDG_DATA_HOME "/.local/share")" \
+      PASEO_USER_XDG_STATE_HOME="$(home_scoped_value XDG_STATE_HOME "/.local/state")" \
+      PASEO_USER_XDG_CACHE_HOME="$(home_scoped_value XDG_CACHE_HOME "/.cache")" \
+      bash "$hook"; then
+      touch "${dir}/.done"
+    else
+      echo "[mods] ERROR: install hook failed: ${hook}" >&2
+      status=1
+    fi
+  done
+  return "$status"
+}
+
+status=0
+IFS='|' read -ra REFS <<< "$MODS"
+for ref in "${REFS[@]}"; do
+  ref="${ref// /}"
+  [[ -z "$ref" ]] && continue
+  if ! apply_mod "$ref"; then
+    status=1
+  fi
+done
+
+if ! run_install_hooks; then
+  status=1
+fi
+
+if [[ "$status" -ne 0 ]]; then
+  if [[ "$STRICT" == "true" ]]; then
+    echo "[mods] FATAL: one or more Docker Mods failed." >&2
+    exit "$status"
+  fi
+  echo "[mods] WARNING: one or more Docker Mods failed; continuing because DOCKER_MODS_STRICT=false." >&2
+fi
+
+echo "[mods] done."
