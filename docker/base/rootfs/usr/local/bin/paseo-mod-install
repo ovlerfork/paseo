@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+kind="${1:-}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+if [[ -z "$kind" || $# -eq 0 ]]; then
+  echo "usage: paseo-mod-install node <package...> | python <package...>" >&2
+  exit 2
+fi
+
+case "$kind" in
+  node)
+    if command -v pnpm >/dev/null 2>&1; then
+      : "${PNPM_HOME:=/usr/local/share/pnpm}"
+      export PNPM_HOME
+      export PATH="${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}"
+      mkdir -p "$PNPM_HOME" "${PNPM_HOME}/bin"
+      exec pnpm add -g "$@"
+    fi
+    exec npm install -g "$@"
+    ;;
+  python)
+    if command -v uv >/dev/null 2>&1; then
+      : "${UV_TOOL_DIR:=/usr/local/share/uv/tools}"
+      : "${UV_TOOL_BIN_DIR:=/usr/local/bin}"
+      export UV_TOOL_DIR UV_TOOL_BIN_DIR
+      mkdir -p "$UV_TOOL_DIR" "$UV_TOOL_BIN_DIR"
+      exec uv tool install "$@"
+    fi
+    if command -v pipx >/dev/null 2>&1; then
+      exec pipx install "$@"
+    fi
+    echo "paseo-mod-install: uv or pipx is required for python installs" >&2
+    exit 1
+    ;;
+  *)
+    echo "paseo-mod-install: unsupported install kind: $kind" >&2
+    exit 2
+    ;;
+esac
