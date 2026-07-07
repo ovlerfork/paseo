@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v opencode >/dev/null 2>&1; then
+  echo "[mod:opencode] opencode already on PATH; skipping install."
+  exit 0
+fi
+
+echo "[mod:opencode] installing opencode-ai with pnpm"
+paseo-mod-install node opencode-ai
+echo "[mod:opencode] done ($(command -v opencode))"
