@@ -38,6 +38,15 @@ jobs:
           fi
           git checkout main
           git reset --hard upstream/main
+          if [ -d .github/workflows ]; then
+            git config user.name "upstream-sync"
+            git config user.email "ci@localhost"
+            rm -rf .github/workflows
+            git add -A .github/workflows
+            if ! git diff --cached --quiet; then
+              git commit -m "Drop upstream workflow files from synced main"
+            fi
+          fi
           git push origin main --force-with-lease
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "upstream_sha=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
