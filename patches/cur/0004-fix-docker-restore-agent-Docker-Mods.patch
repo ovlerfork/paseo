@@ -45,7 +45,7 @@ index ce5692af7..584ea7a0f 100644
  
  RUN set -eux; \
      case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
-@@ -70,22 +72,33 @@ RUN set -eux; \
+@@ -70,22 +72,34 @@ RUN set -eux; \
        bash \
        bash-completion \
        bubblewrap \
@@ -65,6 +65,7 @@ index ce5692af7..584ea7a0f 100644
        lbzip2 \
        less \
 +      lsof \
++      nano \
 +      netcat-openbsd \
        openssh-client \
        openssh-server \
@@ -87,7 +88,7 @@ index ce5692af7..584ea7a0f 100644
      npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
      corepack enable; \
      corepack install -g "pnpm@${PNPM_VERSION}"; \
-@@ -123,8 +137,12 @@ RUN set -eux; \
+@@ -123,8 +137,13 @@ RUN set -eux; \
      corepack --version; \
      fish --version; \
      gh --version | head -n 1; \
@@ -96,6 +97,7 @@ index ce5692af7..584ea7a0f 100644
      command -v inotifywait >/dev/null; \
 +    ip -Version >/dev/null; \
 +    jq --version; \
++    nano --version | head -n 1; \
 +    nc -h >/dev/null 2>&1 || true; \
      uv --version; \
      rm -rf /var/lib/apt/lists/*
