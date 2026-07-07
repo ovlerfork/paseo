@@ -1,0 +1,739 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Tue, 7 Jul 2026 09:12:45 +0000
+Subject: [PATCH] fix(docker): restore agent Docker Mods
+
+
+diff --git a/docker/Dockerfile.agents.example b/docker/Dockerfile.agents.example
+index 0b74f8614..3f89c3d3c 100644
+--- a/docker/Dockerfile.agents.example
++++ b/docker/Dockerfile.agents.example
+@@ -8,7 +8,7 @@
+ FROM ghcr.io/getpaseo/paseo:latest
+ 
+ USER root
+-RUN npm install -g \
++RUN pnpm add -g \
+   @anthropic-ai/claude-code \
+   @openai/codex \
+   opencode-ai
+diff --git a/docker/README.md b/docker/README.md
+index 18092b2ee..233183e4b 100644
+--- a/docker/README.md
++++ b/docker/README.md
+@@ -23,7 +23,7 @@ agents you use:
+ FROM ghcr.io/getpaseo/paseo:latest
+ 
+ USER root
+-RUN npm install -g @openai/codex @anthropic-ai/claude-code
++RUN pnpm add -g @openai/codex @anthropic-ai/claude-code
+ ```
+ 
+ See [docs/docker.md](../docs/docker.md) for Compose, reverse proxy, security,
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index 1773a835c..f1f3839a4 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -24,8 +24,10 @@ ENV HOME=/home/paseo \
+     XDG_DATA_HOME=/home/paseo/.local/share \
+     XDG_STATE_HOME=/home/paseo/.local/state \
+     XDG_CACHE_HOME=/home/paseo/.cache \
++    PNPM_HOME=/usr/local/share/pnpm \
+     ONNXRUNTIME_NODE_INSTALL=skip \
+     PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}
++ENV PATH="${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}"
+ 
+ RUN set -eux; \
+     case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+@@ -45,21 +47,33 @@ RUN set -eux; \
+       bash \
+       bash-completion \
+       bubblewrap \
++      busybox-static \
++      bzip2 \
++      dnsutils \
+       fd-find \
++      file \
+       fish \
+       gh \
+       git \
+       gosu \
+       inotify-tools \
++      iproute2 \
++      iputils-ping \
++      jq \
+       lbzip2 \
+       less \
++      lsof \
++      netcat-openbsd \
+       openssh-client \
+       openssh-server \
+       pipx \
++      procps \
++      psmisc \
+       python3-venv \
+       ripgrep \
+       rsync \
+       tini \
++      tree \
+       unzip \
+       vim-tiny \
+       xz-utils \
+@@ -77,6 +91,7 @@ RUN set -eux; \
+     if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
+       ln -s /usr/bin/fdfind /usr/local/bin/fd; \
+     fi; \
++    install -d -m 0755 "${PNPM_HOME}" "${PNPM_HOME}/bin" /usr/local/share/uv/tools; \
+     npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
+     corepack enable; \
+     corepack install -g "pnpm@${PNPM_VERSION}"; \
+@@ -97,8 +112,12 @@ RUN set -eux; \
+     corepack --version; \
+     fish --version; \
+     gh --version | head -n 1; \
++    busybox --help >/dev/null; \
+     test -f /usr/share/bash-completion/bash_completion; \
+     command -v inotifywait >/dev/null; \
++    ip -Version >/dev/null; \
++    jq --version; \
++    nc -h >/dev/null 2>&1 || true; \
+     uv --version; \
+     rm -rf /var/lib/apt/lists/*
+ 
+@@ -148,7 +167,7 @@ RUN set -eux; \
+     fi
+ 
+ COPY rootfs/ /
+-RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
++RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install
+ 
+ WORKDIR /workspace
+ 
+diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
+index 394054af2..516d66cc6 100644
+--- a/docker/base/Dockerfile.source
++++ b/docker/base/Dockerfile.source
+@@ -47,8 +47,10 @@ ENV HOME=/home/paseo \
+     XDG_DATA_HOME=/home/paseo/.local/share \
+     XDG_STATE_HOME=/home/paseo/.local/state \
+     XDG_CACHE_HOME=/home/paseo/.cache \
++    PNPM_HOME=/usr/local/share/pnpm \
+     ONNXRUNTIME_NODE_INSTALL=skip \
+     PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}
++ENV PATH="${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}"
+ 
+ RUN set -eux; \
+     case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
+@@ -68,21 +70,33 @@ RUN set -eux; \
+       bash \
+       bash-completion \
+       bubblewrap \
++      busybox-static \
++      bzip2 \
++      dnsutils \
+       fd-find \
++      file \
+       fish \
+       gh \
+       git \
+       gosu \
+       inotify-tools \
++      iproute2 \
++      iputils-ping \
++      jq \
+       lbzip2 \
+       less \
++      lsof \
++      netcat-openbsd \
+       openssh-client \
+       openssh-server \
+       pipx \
++      procps \
++      psmisc \
+       python3-venv \
+       ripgrep \
+       rsync \
+       tini \
++      tree \
+       unzip \
+       vim-tiny \
+       xz-utils \
+@@ -100,6 +114,7 @@ RUN set -eux; \
+     if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
+       ln -s /usr/bin/fdfind /usr/local/bin/fd; \
+     fi; \
++    install -d -m 0755 "${PNPM_HOME}" "${PNPM_HOME}/bin" /usr/local/share/uv/tools; \
+     npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
+     corepack enable; \
+     corepack install -g "pnpm@${PNPM_VERSION}"; \
+@@ -120,8 +135,12 @@ RUN set -eux; \
+     corepack --version; \
+     fish --version; \
+     gh --version | head -n 1; \
++    busybox --help >/dev/null; \
+     test -f /usr/share/bash-completion/bash_completion; \
+     command -v inotifywait >/dev/null; \
++    ip -Version >/dev/null; \
++    jq --version; \
++    nc -h >/dev/null 2>&1 || true; \
+     uv --version; \
+     rm -rf /var/lib/apt/lists/*
+ 
+@@ -171,7 +190,7 @@ RUN set -eux; \
+     fi
+ 
+ COPY docker/base/rootfs/ /
+-RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
++RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install
+ 
+ WORKDIR /workspace
+ 
+diff --git a/docker/base/rootfs/usr/local/bin/docker-mods b/docker/base/rootfs/usr/local/bin/docker-mods
+new file mode 100755
+index 000000000..aec4e0c9b
+--- /dev/null
++++ b/docker/base/rootfs/usr/local/bin/docker-mods
+@@ -0,0 +1,238 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++MODS="${DOCKER_MODS:-}"
++if [[ -z "${MODS// }" ]]; then
++  echo "[mods] DOCKER_MODS not set; no agent mods to apply."
++  exit 0
++fi
++
++STRICT="${DOCKER_MODS_STRICT:-true}"
++case "$STRICT" in
++  true | 1 | yes) STRICT=true ;;
++  false | 0 | no) STRICT=false ;;
++  *)
++    echo "[mods] FATAL: unsupported DOCKER_MODS_STRICT=${DOCKER_MODS_STRICT}; expected true or false." >&2
++    exit 1
++    ;;
++esac
++
++WORK="$(mktemp -d)"
++trap 'rm -rf "$WORK"' EXIT
++
++arch="$(uname -m)"
++case "$arch" in
++  x86_64) GOARCH=amd64 ;;
++  aarch64 | arm64) GOARCH=arm64 ;;
++  *) GOARCH=amd64 ;;
++esac
++
++parse_ref() {
++  local ref="$1" first rest
++  first="${ref%%/*}"
++  if [[ "$first" == *.* || "$first" == *:* || "$first" == "localhost" ]]; then
++    REG="$first"
++    rest="${ref#*/}"
++  else
++    REG="docker.io"
++    rest="$ref"
++  fi
++
++  if [[ "$rest" == *:* ]]; then
++    TAG="${rest##*:}"
++    REPO="${rest%:*}"
++  else
++    TAG="latest"
++    REPO="$rest"
++  fi
++
++  if [[ "$REG" == "docker.io" && "$REPO" != */* ]]; then
++    REPO="library/$REPO"
++  fi
++}
++
++auth_token() {
++  local registry="$1" repo="$2"
++  case "$registry" in
++    ghcr.io)
++      curl -fsSL "https://ghcr.io/token?scope=repository:${repo}:pull" | jq -r '.token // empty'
++      ;;
++    docker.io | registry-1.docker.io)
++      curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull" | jq -r '.token // empty'
++      ;;
++    *)
++      curl -fsSL "https://${registry}/token?scope=repository:${repo}:pull" 2>/dev/null | jq -r '.token // empty'
++      ;;
++  esac
++}
++
++registry_host() {
++  case "$1" in
++    docker.io) echo "registry-1.docker.io" ;;
++    *) echo "$1" ;;
++  esac
++}
++
++ACCEPT_MANIFEST="application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json"
++
++extract_layer() {
++  local blob="$1" digest="$2"
++  if tar -C / -xzpf "$blob" 2>/dev/null; then
++    return 0
++  fi
++  if tar -C / -xpf "$blob" 2>/dev/null; then
++    return 0
++  fi
++  echo "[mods] ERROR: failed to extract layer ${digest}." >&2
++  return 1
++}
++
++apply_mod() {
++  local ref="$1"
++  parse_ref "$ref"
++
++  local host token auth manifest digest layers i d blob
++  host="$(registry_host "$REG")"
++  token="$(auth_token "$REG" "$REPO" || true)"
++  auth=()
++  [[ -n "$token" ]] && auth=(-H "Authorization: Bearer ${token}")
++
++  echo "[mods] applying ${ref} (registry=${REG} repo=${REPO} tag=${TAG})"
++  manifest="$(curl -fsSL "${auth[@]}" -H "Accept: ${ACCEPT_MANIFEST}" \
++    "https://${host}/v2/${REPO}/manifests/${TAG}")" || {
++    echo "[mods] ERROR: failed to fetch manifest for ${ref}." >&2
++    return 1
++  }
++
++  if jq -e '.manifests' <<< "$manifest" >/dev/null 2>&1; then
++    digest="$(jq -r \
++      --arg arch "$GOARCH" \
++      '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$arch) | .digest' \
++      <<< "$manifest" | head -n1)"
++    if [[ -z "$digest" ]]; then
++      digest="$(jq -r '.manifests[0].digest' <<< "$manifest")"
++    fi
++    manifest="$(curl -fsSL "${auth[@]}" -H "Accept: ${ACCEPT_MANIFEST}" \
++      "https://${host}/v2/${REPO}/manifests/${digest}")" || {
++      echo "[mods] ERROR: failed to fetch platform manifest for ${ref}." >&2
++      return 1
++    }
++  fi
++
++  layers="$(jq -r '.layers[].digest' <<< "$manifest")"
++  if [[ -z "$layers" ]]; then
++    echo "[mods] WARNING: ${ref} has no layers; nothing to extract." >&2
++    return 0
++  fi
++
++  i=0
++  while IFS= read -r d; do
++    [[ -z "$d" ]] && continue
++    i=$((i + 1))
++    blob="${WORK}/layer-${i}.tar"
++    curl -fsSL "${auth[@]}" -o "$blob" \
++      "https://${host}/v2/${REPO}/blobs/${d}" || {
++      echo "[mods] ERROR: failed to download layer ${d}." >&2
++      return 1
++    }
++    extract_layer "$blob" "$d" || return 1
++    rm -f "$blob"
++  done <<< "$layers"
++
++  echo "[mods] extracted ${ref}"
++}
++
++home_scoped_value() {
++  local name="$1" suffix="$2" value image_default
++  value="${!name:-}"
++  image_default="/home/paseo${suffix}"
++  if [[ -z "$value" || ( "${HOME:-/home/paseo}" != "/home/paseo" && "$value" == "$image_default" ) ]]; then
++    printf '%s' "${HOME:-/home/paseo}${suffix}"
++  else
++    printf '%s' "$value"
++  fi
++}
++
++run_install_hooks() {
++  shopt -s nullglob
++
++  local install_home="/root"
++  local pnpm_home="${PNPM_HOME:-/usr/local/share/pnpm}"
++  local uv_tool_dir="${UV_TOOL_DIR:-/usr/local/share/uv/tools}"
++  local uv_tool_bin_dir="${UV_TOOL_BIN_DIR:-/usr/local/bin}"
++  mkdir -p \
++    "${install_home}/.claude" \
++    "${install_home}/.codex" \
++    "${install_home}/.config" \
++    "${install_home}/.local/share" \
++    "${install_home}/.local/state" \
++    "${install_home}/.cache" \
++    "$pnpm_home" \
++    "${pnpm_home}/bin" \
++    "$uv_tool_dir" \
++    "$uv_tool_bin_dir" \
++    /tmp/paseo-npm-cache
++
++  local hook dir status=0
++  for hook in /etc/paseo-mods/*/install; do
++    dir="$(dirname "$hook")"
++    if [[ -f "${dir}/.done" ]]; then
++      continue
++    fi
++    echo "[mods] running install hook: ${hook}"
++    chmod +x "$hook" || true
++    if env \
++      HOME="$install_home" \
++      PASEO_HOME="${install_home}/.paseo" \
++      CLAUDE_CONFIG_DIR="${install_home}/.claude" \
++      CODEX_HOME="${install_home}/.codex" \
++      XDG_CONFIG_HOME="${install_home}/.config" \
++      XDG_DATA_HOME="${install_home}/.local/share" \
++      XDG_STATE_HOME="${install_home}/.local/state" \
++      XDG_CACHE_HOME="${install_home}/.cache" \
++      PNPM_HOME="$pnpm_home" \
++      PATH="${pnpm_home}/bin:${pnpm_home}:${PATH}" \
++      npm_config_cache=/tmp/paseo-npm-cache \
++      UV_TOOL_DIR="$uv_tool_dir" \
++      UV_TOOL_BIN_DIR="$uv_tool_bin_dir" \
++      PASEO_USER_HOME="${HOME:-/home/paseo}" \
++      PASEO_USER_PASEO_HOME="$(home_scoped_value PASEO_HOME "/.paseo")" \
++      PASEO_USER_CLAUDE_CONFIG_DIR="$(home_scoped_value CLAUDE_CONFIG_DIR "/.claude")" \
++      PASEO_USER_CODEX_HOME="$(home_scoped_value CODEX_HOME "/.codex")" \
++      PASEO_USER_XDG_CONFIG_HOME="$(home_scoped_value XDG_CONFIG_HOME "/.config")" \
++      PASEO_USER_XDG_DATA_HOME="$(home_scoped_value XDG_DATA_HOME "/.local/share")" \
++      PASEO_USER_XDG_STATE_HOME="$(home_scoped_value XDG_STATE_HOME "/.local/state")" \
++      PASEO_USER_XDG_CACHE_HOME="$(home_scoped_value XDG_CACHE_HOME "/.cache")" \
++      bash "$hook"; then
++      touch "${dir}/.done"
++    else
++      echo "[mods] ERROR: install hook failed: ${hook}" >&2
++      status=1
++    fi
++  done
++  return "$status"
++}
++
++status=0
++IFS='|' read -ra REFS <<< "$MODS"
++for ref in "${REFS[@]}"; do
++  ref="${ref// /}"
++  [[ -z "$ref" ]] && continue
++  if ! apply_mod "$ref"; then
++    status=1
++  fi
++done
++
++if ! run_install_hooks; then
++  status=1
++fi
++
++if [[ "$status" -ne 0 ]]; then
++  if [[ "$STRICT" == "true" ]]; then
++    echo "[mods] FATAL: one or more Docker Mods failed." >&2
++    exit "$status"
++  fi
++  echo "[mods] WARNING: one or more Docker Mods failed; continuing because DOCKER_MODS_STRICT=false." >&2
++fi
++
++echo "[mods] done."
+diff --git a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
+index a32c3652e..7866a730f 100644
+--- a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
++++ b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
+@@ -79,6 +79,18 @@ ensure_dir "$XDG_DATA_HOME"
+ ensure_dir "$XDG_STATE_HOME"
+ ensure_dir "$XDG_CACHE_HOME"
+ 
++apply_docker_mods() {
++  if [[ -z "${DOCKER_MODS:-}" || -z "${DOCKER_MODS// }" ]]; then
++    echo "[mods] DOCKER_MODS not set; no agent mods to apply."
++    return
++  fi
++  if [[ "$(id -u)" != "0" ]]; then
++    echo "[paseo] FATAL: DOCKER_MODS requires the container entrypoint to run as root." >&2
++    exit 1
++  fi
++  /usr/local/bin/docker-mods
++}
++
+ start_sshd() {
+   case "${PASEO_SSH_ENABLED:-false}" in
+     true | 1 | yes) ;;
+@@ -119,6 +131,7 @@ start_sshd() {
+     -p "$PASEO_SSH_PORT"
+ }
+ 
++apply_docker_mods
+ start_sshd
+ 
+ if [[ "$#" -gt 0 ]]; then
+diff --git a/docker/base/rootfs/usr/local/bin/paseo-mod-install b/docker/base/rootfs/usr/local/bin/paseo-mod-install
+new file mode 100755
+index 000000000..c8b1a0632
+--- /dev/null
++++ b/docker/base/rootfs/usr/local/bin/paseo-mod-install
+@@ -0,0 +1,43 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++kind="${1:-}"
++if [[ $# -gt 0 ]]; then
++  shift
++fi
++
++if [[ -z "$kind" || $# -eq 0 ]]; then
++  echo "usage: paseo-mod-install node <package...> | python <package...>" >&2
++  exit 2
++fi
++
++case "$kind" in
++  node)
++    if command -v pnpm >/dev/null 2>&1; then
++      : "${PNPM_HOME:=/usr/local/share/pnpm}"
++      export PNPM_HOME
++      export PATH="${PNPM_HOME}/bin:${PNPM_HOME}:${PATH}"
++      mkdir -p "$PNPM_HOME" "${PNPM_HOME}/bin"
++      exec pnpm add -g "$@"
++    fi
++    exec npm install -g "$@"
++    ;;
++  python)
++    if command -v uv >/dev/null 2>&1; then
++      : "${UV_TOOL_DIR:=/usr/local/share/uv/tools}"
++      : "${UV_TOOL_BIN_DIR:=/usr/local/bin}"
++      export UV_TOOL_DIR UV_TOOL_BIN_DIR
++      mkdir -p "$UV_TOOL_DIR" "$UV_TOOL_BIN_DIR"
++      exec uv tool install "$@"
++    fi
++    if command -v pipx >/dev/null 2>&1; then
++      exec pipx install "$@"
++    fi
++    echo "paseo-mod-install: uv or pipx is required for python installs" >&2
++    exit 1
++    ;;
++  *)
++    echo "paseo-mod-install: unsupported install kind: $kind" >&2
++    exit 2
++    ;;
++esac
+diff --git a/docker/docker-compose.example.yml b/docker/docker-compose.example.yml
+index 5657d95f2..8573b233b 100644
+--- a/docker/docker-compose.example.yml
++++ b/docker/docker-compose.example.yml
+@@ -16,6 +16,10 @@ services:
+       # Add DNS names you use to reach this container. IPs and localhost are
+       # already allowed by default.
+       # PASEO_HOSTNAMES: "paseo.example.com,.lan"
++      # Install agent CLIs at container startup with Docker Mods.
++      # DOCKER_MODS: "ghcr.io/ovlerfork/mods:codex|ghcr.io/ovlerfork/mods:claude-code"
++      # Set false if you prefer the daemon to start even when a mod install fails.
++      # DOCKER_MODS_STRICT: "true"
+       # PASEO_SSH_ENABLED: "true"
+       # PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
+     volumes:
+diff --git a/docker/mods/claude-code/Dockerfile b/docker/mods/claude-code/Dockerfile
+new file mode 100644
+index 000000000..0c908e14b
+--- /dev/null
++++ b/docker/mods/claude-code/Dockerfile
+@@ -0,0 +1,3 @@
++# syntax=docker/dockerfile:1
++FROM scratch
++COPY root-layer/ /
+diff --git a/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
+new file mode 100755
+index 000000000..0f2251947
+--- /dev/null
++++ b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v claude >/dev/null 2>&1; then
++  echo "[mod:claude-code] claude already on PATH; skipping install."
++  exit 0
++fi
++
++echo "[mod:claude-code] installing @anthropic-ai/claude-code with pnpm"
++paseo-mod-install node @anthropic-ai/claude-code
++echo "[mod:claude-code] done ($(command -v claude))"
+diff --git a/docker/mods/codex/Dockerfile b/docker/mods/codex/Dockerfile
+new file mode 100644
+index 000000000..0c908e14b
+--- /dev/null
++++ b/docker/mods/codex/Dockerfile
+@@ -0,0 +1,3 @@
++# syntax=docker/dockerfile:1
++FROM scratch
++COPY root-layer/ /
+diff --git a/docker/mods/codex/root-layer/etc/paseo-mods/codex/install b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
+new file mode 100755
+index 000000000..718af3e11
+--- /dev/null
++++ b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v codex >/dev/null 2>&1; then
++  echo "[mod:codex] codex already on PATH; skipping install."
++  exit 0
++fi
++
++echo "[mod:codex] installing @openai/codex with pnpm"
++paseo-mod-install node @openai/codex
++echo "[mod:codex] done ($(command -v codex))"
+diff --git a/docker/mods/copilot/Dockerfile b/docker/mods/copilot/Dockerfile
+new file mode 100644
+index 000000000..0c908e14b
+--- /dev/null
++++ b/docker/mods/copilot/Dockerfile
+@@ -0,0 +1,3 @@
++# syntax=docker/dockerfile:1
++FROM scratch
++COPY root-layer/ /
+diff --git a/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install b/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install
+new file mode 100755
+index 000000000..a009e2dd6
+--- /dev/null
++++ b/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v copilot >/dev/null 2>&1; then
++  echo "[mod:copilot] copilot already on PATH; skipping install."
++  exit 0
++fi
++
++echo "[mod:copilot] installing @github/copilot with pnpm"
++paseo-mod-install node @github/copilot
++echo "[mod:copilot] done ($(command -v copilot))"
+diff --git a/docker/mods/opencode/Dockerfile b/docker/mods/opencode/Dockerfile
+new file mode 100644
+index 000000000..0c908e14b
+--- /dev/null
++++ b/docker/mods/opencode/Dockerfile
+@@ -0,0 +1,3 @@
++# syntax=docker/dockerfile:1
++FROM scratch
++COPY root-layer/ /
+diff --git a/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install b/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install
+new file mode 100755
+index 000000000..3ce2bf664
+--- /dev/null
++++ b/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v opencode >/dev/null 2>&1; then
++  echo "[mod:opencode] opencode already on PATH; skipping install."
++  exit 0
++fi
++
++echo "[mod:opencode] installing opencode-ai with pnpm"
++paseo-mod-install node opencode-ai
++echo "[mod:opencode] done ($(command -v opencode))"
+diff --git a/docker/mods/pi/Dockerfile b/docker/mods/pi/Dockerfile
+new file mode 100644
+index 000000000..0c908e14b
+--- /dev/null
++++ b/docker/mods/pi/Dockerfile
+@@ -0,0 +1,3 @@
++# syntax=docker/dockerfile:1
++FROM scratch
++COPY root-layer/ /
+diff --git a/docker/mods/pi/root-layer/etc/paseo-mods/pi/install b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+new file mode 100755
+index 000000000..a1be15521
+--- /dev/null
++++ b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v pi >/dev/null 2>&1; then
++  echo "[mod:pi] pi already on PATH; skipping install."
++  exit 0
++fi
++
++PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
++echo "[mod:pi] installing ${PI_NPM_PACKAGE} with pnpm"
++paseo-mod-install node --ignore-scripts "${PI_NPM_PACKAGE}"
++
++PI_BIN="$(command -v pi)" || {
++  echo "[mod:pi] ERROR: ${PI_NPM_PACKAGE} did not install a 'pi' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:pi] done (${PI_BIN})"
+diff --git a/docs/docker.md b/docs/docker.md
+index ff8143ed5..84a911c8e 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -118,29 +118,53 @@ The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
+ other agent CLIs. That keeps the default image small and avoids coupling Paseo
+ releases to third-party agent release cycles.
+ 
+-Create a child image for the agents you use:
++Use Docker Mods to install agent CLIs at container startup:
+ 
+-```Dockerfile
+-FROM ghcr.io/getpaseo/paseo:latest
+-
+-USER root
+-RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
++```bash
++docker run -d --name paseo \
++  -p 6767:6767 \
++  -e PASEO_PASSWORD=change-me \
++  -e 'DOCKER_MODS=ghcr.io/ovlerfork/mods:codex|ghcr.io/ovlerfork/mods:claude-code' \
++  -v "$PWD/paseo-home:/home/paseo" \
++  -v "$PWD:/workspace" \
++  ghcr.io/ovlerfork/paseo:latest
+ ```
+ 
+-Build it:
++`DOCKER_MODS` is a pipe-separated list of mod images. Each mod image carries a
++small install hook under `/etc/paseo-mods/<name>/install`. The base entrypoint
++pulls those mod layers, extracts them, and runs the hooks before starting the
++daemon. A configured mod failure stops startup by default so missing agent CLIs
++do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
++starting the daemon.
+ 
+-```bash
+-docker build -f Dockerfile -t paseo-with-agents .
+-```
++Available mod tags:
++
++| Mod tag       | Package                           | Binary     |
++| ------------- | --------------------------------- | ---------- |
++| `claude-code` | `@anthropic-ai/claude-code`       | `claude`   |
++| `codex`       | `@openai/codex`                   | `codex`    |
++| `copilot`     | `@github/copilot`                 | `copilot`  |
++| `opencode`    | `opencode-ai`                     | `opencode` |
++| `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
++
++Node-based mod hooks install global packages with `pnpm` first and fall back to
++`npm` only when `pnpm` is unavailable. Python-based mod hooks should use
++`paseo-mod-install python <package>`, which prefers `uv tool install` and falls
++back to `pipx`.
+ 
+-Then use `image: paseo-with-agents` in Compose.
++Codex is intentionally installed through the `codex` mod instead of baked into
++the base image, so a newly created container can pick up the current
++`@openai/codex` release without waiting for a new Paseo image.
+ 
+-Leave the child image user as root. The base entrypoint uses root only for
+-first-run directory setup, then drops the daemon and launched agents to the
+-non-root `paseo` user.
++You can still create a child image when you want a fully offline or internally
++mirrored agent install:
+ 
+-An example child image is in
+-[`docker/Dockerfile.agents.example`](../docker/Dockerfile.agents.example).
++```Dockerfile
++FROM ghcr.io/ovlerfork/paseo:latest
++
++USER root
++RUN pnpm add -g @openai/codex @anthropic-ai/claude-code opencode-ai
++```
+ 
+ You can also mount credentials from the host or run agent login once inside the
+ container:
