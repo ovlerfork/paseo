@@ -21,7 +21,7 @@ The current series carries fork-owned source patches again:
 - `0003-fix-docker-add-ssh-runtime.patch` adds an optional Docker SSH runtime. It installs `openssh-server`, keeps SSH disabled by default, starts key-only `sshd` when `PASEO_SSH_ENABLED=true`, reads authorized keys from a Compose-friendly config path, and documents the opt-in Compose config mount.
 - `0004-fix-docker-restore-agent-Docker-Mods.patch` restores runtime agent Docker Mods on the current `tini` entrypoint without baking agent CLIs into the base image. It adds the `docker-mods` loader, a `paseo-mod-install` helper that prefers `pnpm` for global Node tools and `uv` for Python tools, `jq`, `busybox-static`, common diagnostics/networking utilities, and mod images for Claude Code, Codex, Copilot, OpenCode, and Pi.
 
-Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile.source` before publishing to the fork GHCR namespace.
+Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 
 Docker Mods are restored on the current `tini` plus `paseo-docker-entrypoint` runtime. The old s6 overlay runtime remains intentionally absent.
 

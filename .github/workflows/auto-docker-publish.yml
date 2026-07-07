@@ -187,7 +187,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: docker/base/Dockerfile.source
+          file: docker/base/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.prepare.outputs.version }}

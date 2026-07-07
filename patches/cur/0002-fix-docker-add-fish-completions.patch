@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: patch-ci <ci@localhost>
-Date: Fri, 3 Jul 2026 09:10:30 +0000
+Date: Tue, 7 Jul 2026 09:27:06 +0000
 Subject: [PATCH] fix(docker): add fish and shell completions
 
 
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
-index ea03d8daf..fba77177f 100644
+index 30916a7ed..af2eeba1f 100644
 --- a/docker/base/Dockerfile
 +++ b/docker/base/Dockerfile
-@@ -43,8 +43,10 @@ RUN set -eux; \
+@@ -68,8 +68,10 @@ RUN set -eux; \
      apt-get update; \
      apt-get install -y --no-install-recommends \
        bash \
@@ -19,32 +19,7 @@ index ea03d8daf..fba77177f 100644
        gh \
        git \
        gosu \
-@@ -92,7 +94,9 @@ RUN set -eux; \
-     node --version; \
-     npm --version; \
-     corepack --version; \
-+    fish --version; \
-     gh --version | head -n 1; \
-+    test -f /usr/share/bash-completion/bash_completion; \
-     command -v inotifywait >/dev/null; \
-     uv --version; \
-     rm -rf /var/lib/apt/lists/*
-diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
-index 3c5d9958c..6e912d754 100644
---- a/docker/base/Dockerfile.source
-+++ b/docker/base/Dockerfile.source
-@@ -66,8 +66,10 @@ RUN set -eux; \
-     apt-get update; \
-     apt-get install -y --no-install-recommends \
-       bash \
-+      bash-completion \
-       bubblewrap \
-       fd-find \
-+      fish \
-       gh \
-       git \
-       gosu \
-@@ -115,7 +117,9 @@ RUN set -eux; \
+@@ -118,7 +120,9 @@ RUN set -eux; \
      node --version; \
      npm --version; \
      corepack --version; \

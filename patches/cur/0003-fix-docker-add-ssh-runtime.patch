@@ -1,43 +1,22 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: patch-ci <ci@localhost>
-Date: Wed, 1 Jul 2026 12:03:00 +0000
+Date: Tue, 7 Jul 2026 09:28:26 +0000
 Subject: [PATCH] fix(docker): add optional ssh runtime
 
 
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
-index 405f6049c2065fa1c134310fe6be74bedc8bcd0a..706af6d5f556bef88573609a295442c71d5abe84 100644
+index af2eeba1f..ce5692af7 100644
 --- a/docker/base/Dockerfile
 +++ b/docker/base/Dockerfile
-@@ -51,6 +51,7 @@ RUN set -eux; \
+@@ -79,6 +79,7 @@ RUN set -eux; \
        lbzip2 \
        less \
        openssh-client \
 +      openssh-server \
        pipx \
+       procps \
        python3-venv \
-       ripgrep \
-@@ -145,7 +146,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
- 
- WORKDIR /workspace
- 
--EXPOSE 6767
-+EXPOSE 6767 2222
- VOLUME ["/home/paseo"]
- 
- HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-diff --git a/docker/base/Dockerfile.source b/docker/base/Dockerfile.source
-index 7d9d79a4a4da958295b8076d620e3e3ee4cf1bdf..ab6a2996b63d4a1f5debb572e4cced1c79e2f330 100644
---- a/docker/base/Dockerfile.source
-+++ b/docker/base/Dockerfile.source
-@@ -74,6 +74,7 @@ RUN set -eux; \
-       lbzip2 \
-       less \
-       openssh-client \
-+      openssh-server \
-       pipx \
-       python3-venv \
-       ripgrep \
-@@ -168,7 +169,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
+@@ -177,7 +178,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
  
  WORKDIR /workspace
  
@@ -47,7 +26,7 @@ index 7d9d79a4a4da958295b8076d620e3e3ee4cf1bdf..ab6a2996b63d4a1f5debb572e4cced1c
  
  HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 diff --git a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
-index a9138d41f4744b9daa87ac0a980f0aaebeeb85c0..a32c3652ed6dd39e47c6816ab87dd7e8655eb006 100644
+index a9138d41f..a32c3652e 100644
 --- a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
 +++ b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
 @@ -33,6 +33,8 @@ home_default PASEO_HOME "/.paseo"
@@ -118,7 +97,7 @@ index a9138d41f4744b9daa87ac0a980f0aaebeeb85c0..a32c3652ed6dd39e47c6816ab87dd7e8
    if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
      exec gosu paseo "$@"
 diff --git a/docker/docker-compose.example.yml b/docker/docker-compose.example.yml
-index 1f1d5cd5325d7196ed3dcf2f6ef7d3abbf640199..5657d95f29cc3f581fa7c757a95c2e7bf3e47c14 100644
+index 1f1d5cd53..5657d95f2 100644
 --- a/docker/docker-compose.example.yml
 +++ b/docker/docker-compose.example.yml
 @@ -9,13 +9,24 @@ services:
@@ -147,10 +126,10 @@ index 1f1d5cd5325d7196ed3dcf2f6ef7d3abbf640199..5657d95f29cc3f581fa7c757a95c2e7b
 +#   paseo_ssh_authorized_keys:
 +#     file: ./paseo_ssh_authorized_keys.pub
 diff --git a/docs/docker.md b/docs/docker.md
-index 160a2e9fd3d686fe9c08105eeced923abf55f4e0..f4314ad2b26d71b107b13e78043b555478473346 100644
+index 268331303..f02bb8512 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -69,6 +69,49 @@ services:
+@@ -68,6 +68,49 @@ services:
        - ./workspace:/workspace
  ```
  
@@ -200,7 +179,7 @@ index 160a2e9fd3d686fe9c08105eeced923abf55f4e0..f4314ad2b26d71b107b13e78043b5554
  ## Installing Agents
  
  The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
-@@ -121,11 +164,14 @@ or `compose.environment`; Paseo passes them to launched agents.
+@@ -120,11 +163,14 @@ or `compose.environment`; Paseo passes them to launched agents.
  
  The image defaults:
  
@@ -220,75 +199,3 @@ index 160a2e9fd3d686fe9c08105eeced923abf55f4e0..f4314ad2b26d71b107b13e78043b5554
  
  If you bind-mount host directories on Linux, make sure the container user can
  write them. The built-in `paseo` user has uid/gid `1000:1000`. For a different
-@@ -176,6 +222,8 @@ IPs and `localhost` are allowed by default.
- ## Security
- 
- - Set `PASEO_PASSWORD` for any published port or network-reachable deployment.
-+- Leave SSH disabled unless you need shell access. When enabled, publish it only
-+  on trusted networks and use authorized keys.
- - Prefer HTTPS at the reverse proxy for direct browser access.
- - Use the Paseo relay for untrusted networks or mobile access when you do not
-   want to expose the daemon port directly.
-diff --git a/public-docs/docker.md b/public-docs/docker.md
-index be533e66a2fa73893b83387ec624de564bc6dbf9..61f0317758057764303a32cb6ce470d7a0903a96 100644
---- a/public-docs/docker.md
-+++ b/public-docs/docker.md
-@@ -65,6 +65,49 @@ Start it:
- docker compose up -d
- ```
- 
-+### Optional SSH Access
-+
-+The image can start an SSH daemon for direct shell access to the same runtime
-+user that runs Paseo. SSH is disabled by default and accepts authorized keys
-+only.
-+
-+Write your public key to a local file:
-+
-+```bash
-+cp ~/.ssh/id_ed25519.pub paseo_ssh_authorized_keys.pub
-+```
-+
-+Then enable SSH in Compose with a config mount:
-+
-+```yaml
-+services:
-+  paseo:
-+    ports:
-+      - "6767:6767"
-+      - "2222:2222"
-+    environment:
-+      PASEO_PASSWORD: "change-me"
-+      PASEO_SSH_ENABLED: "true"
-+      PASEO_SSH_AUTHORIZED_KEYS_FILE: "/run/configs/paseo_ssh_authorized_keys"
-+    configs:
-+      - source: paseo_ssh_authorized_keys
-+        target: /run/configs/paseo_ssh_authorized_keys
-+
-+configs:
-+  paseo_ssh_authorized_keys:
-+    file: ./paseo_ssh_authorized_keys.pub
-+```
-+
-+Connect as the runtime user:
-+
-+```bash
-+ssh -p 2222 paseo@localhost
-+```
-+
-+The SSH port can be changed with `PASEO_SSH_PORT`. If you build or run the
-+image with `PASEO_RUNTIME_USER=root`, connect as `root`; root SSH login still
-+requires a key.
-+
- ## Install agent CLIs
- 
- Create a child image for the providers you want available:
-@@ -149,6 +192,8 @@ IPs and `localhost` are allowed by default.
- 
- Set `PASEO_PASSWORD` for any published port or network-reachable deployment. Use HTTPS at your reverse proxy for browser access outside localhost.
- 
-+Leave SSH disabled unless you need shell access. When enabled, publish it only on trusted networks and use authorized keys.
-+
- The static web UI is public on the daemon origin. The daemon API and WebSocket are protected by password auth when configured.
- 
- Agents can access whatever you mount into `/workspace` and whatever credentials you place in `/home/paseo`. Keep those mounts scoped to what the agents should be able to use.
