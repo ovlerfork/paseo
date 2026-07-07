@@ -2,21 +2,46 @@
 set -euo pipefail
 
 IMAGE_HOME="/home/paseo"
+PASEO_RUNTIME_USER="${PASEO_RUNTIME_USER:-paseo}"
 
-: "${HOME:=$IMAGE_HOME}"
-: "${PASEO_HOME:=${HOME}/.paseo}"
+case "$PASEO_RUNTIME_USER" in
+  paseo | root) ;;
+  *)
+    echo "[paseo] FATAL: unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}; expected paseo or root." >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$PASEO_RUNTIME_USER" == "root" && "${HOME:-$IMAGE_HOME}" == "$IMAGE_HOME" ]]; then
+  HOME="/root"
+else
+  : "${HOME:=$IMAGE_HOME}"
+fi
+
+home_default() {
+  local name="$1"
+  local suffix="$2"
+  local current="${!name:-}"
+  local image_default="${IMAGE_HOME}${suffix}"
+  if [[ -z "$current" || ( "$PASEO_RUNTIME_USER" == "root" && "$current" == "$image_default" ) ]]; then
+    printf -v "$name" '%s' "${HOME}${suffix}"
+  fi
+}
+
+home_default PASEO_HOME "/.paseo"
 : "${PASEO_LISTEN:=0.0.0.0:6767}"
 : "${PASEO_WEB_UI_ENABLED:=true}"
 : "${PASEO_LOG_LEVEL:=info}"
 : "${PASEO_LOG_FORMAT:=json}"
-: "${CLAUDE_CONFIG_DIR:=${HOME}/.claude}"
-: "${CODEX_HOME:=${HOME}/.codex}"
-: "${XDG_CONFIG_HOME:=${HOME}/.config}"
-: "${XDG_DATA_HOME:=${HOME}/.local/share}"
-: "${XDG_STATE_HOME:=${HOME}/.local/state}"
-: "${XDG_CACHE_HOME:=${HOME}/.cache}"
+home_default CLAUDE_CONFIG_DIR "/.claude"
+home_default CODEX_HOME "/.codex"
+home_default XDG_CONFIG_HOME "/.config"
+home_default XDG_DATA_HOME "/.local/share"
+home_default XDG_STATE_HOME "/.local/state"
+home_default XDG_CACHE_HOME "/.cache"
 
 export HOME
+export PASEO_RUNTIME_USER
 export PASEO_HOME
 export PASEO_LISTEN
 export PASEO_WEB_UI_ENABLED
@@ -32,7 +57,7 @@ export XDG_CACHE_HOME
 ensure_dir() {
   local dir="$1"
   mkdir -p "$dir"
-  if [[ "$(id -u)" == "0" ]]; then
+  if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
     local owner
     owner="$(stat -c "%u" "$dir")"
     if [[ "$owner" == "0" ]]; then
@@ -51,7 +76,7 @@ ensure_dir "$XDG_STATE_HOME"
 ensure_dir "$XDG_CACHE_HOME"
 
 if [[ "$#" -gt 0 ]]; then
-  if [[ "$(id -u)" == "0" ]]; then
+  if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
     exec gosu paseo "$@"
   fi
   exec "$@"
@@ -72,7 +97,7 @@ fi
 
 entry="$(cat /etc/paseo-server-entry)"
 echo "[paseo] starting daemon on ${PASEO_LISTEN} with web UI ${PASEO_WEB_UI_ENABLED}"
-if [[ "$(id -u)" == "0" ]]; then
+if [[ "$(id -u)" == "0" && "$PASEO_RUNTIME_USER" == "paseo" ]]; then
   exec gosu paseo node "$entry"
 fi
 exec node "$entry"
