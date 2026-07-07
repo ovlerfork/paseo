@@ -79,6 +79,18 @@ ensure_dir "$XDG_DATA_HOME"
 ensure_dir "$XDG_STATE_HOME"
 ensure_dir "$XDG_CACHE_HOME"
 
+apply_docker_mods() {
+  if [[ -z "${DOCKER_MODS:-}" || -z "${DOCKER_MODS// }" ]]; then
+    echo "[mods] DOCKER_MODS not set; no agent mods to apply."
+    return
+  fi
+  if [[ "$(id -u)" != "0" ]]; then
+    echo "[paseo] FATAL: DOCKER_MODS requires the container entrypoint to run as root." >&2
+    exit 1
+  fi
+  /usr/local/bin/docker-mods
+}
+
 start_sshd() {
   case "${PASEO_SSH_ENABLED:-false}" in
     true | 1 | yes) ;;
@@ -119,6 +131,7 @@ start_sshd() {
     -p "$PASEO_SSH_PORT"
 }
 
+apply_docker_mods
 start_sshd
 
 if [[ "$#" -gt 0 ]]; then
