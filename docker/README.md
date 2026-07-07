@@ -23,7 +23,7 @@ agents you use:
 FROM ghcr.io/getpaseo/paseo:latest
 
 USER root
-RUN npm install -g @openai/codex @anthropic-ai/claude-code
+RUN pnpm add -g @openai/codex @anthropic-ai/claude-code
 ```
 
 See [docs/docker.md](../docs/docker.md) for Compose, reverse proxy, security,
