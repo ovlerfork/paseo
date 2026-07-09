@@ -6,6 +6,15 @@ if command -v copilot >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "[mod:copilot] installing @github/copilot with pnpm"
-paseo-mod-install node @github/copilot
+package="@github/copilot"
+version_file="/etc/paseo-mods/copilot/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:copilot] installing ${package} with pnpm"
+paseo-mod-install node "$package"
 echo "[mod:copilot] done ($(command -v copilot))"
