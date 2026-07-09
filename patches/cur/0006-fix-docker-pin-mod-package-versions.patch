@@ -1,0 +1,265 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: patch-ci <ci@localhost>
+Date: Thu, 9 Jul 2026 18:23:14 +0000
+Subject: [PATCH] fix(docker): pin mod package versions
+
+
+diff --git a/docker/mods/claude-code/Dockerfile b/docker/mods/claude-code/Dockerfile
+index 0c908e14b..f287d0d49 100644
+--- a/docker/mods/claude-code/Dockerfile
++++ b/docker/mods/claude-code/Dockerfile
+@@ -1,3 +1,25 @@
+ # syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=claude-code
++ARG PASEO_MOD_PACKAGE=@anthropic-ai/claude-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
+ FROM scratch
++ARG PASEO_MOD_NAME=claude-code
++ARG PASEO_MOD_PACKAGE=@anthropic-ai/claude-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
+ COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
+index 0f2251947..5d0656662 100755
+--- a/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
++++ b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
+@@ -6,6 +6,15 @@ if command -v claude >/dev/null 2>&1; then
+   exit 0
+ fi
+ 
+-echo "[mod:claude-code] installing @anthropic-ai/claude-code with pnpm"
+-paseo-mod-install node @anthropic-ai/claude-code
++package="@anthropic-ai/claude-code"
++version_file="/etc/paseo-mods/claude-code/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:claude-code] installing ${package} with pnpm"
++paseo-mod-install node "$package"
+ echo "[mod:claude-code] done ($(command -v claude))"
+diff --git a/docker/mods/codex/Dockerfile b/docker/mods/codex/Dockerfile
+index 0c908e14b..a94a3173f 100644
+--- a/docker/mods/codex/Dockerfile
++++ b/docker/mods/codex/Dockerfile
+@@ -1,3 +1,25 @@
+ # syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=codex
++ARG PASEO_MOD_PACKAGE=@openai/codex
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
+ FROM scratch
++ARG PASEO_MOD_NAME=codex
++ARG PASEO_MOD_PACKAGE=@openai/codex
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
+ COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/codex/root-layer/etc/paseo-mods/codex/install b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
+index 718af3e11..7eab5faa0 100755
+--- a/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
++++ b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
+@@ -6,6 +6,15 @@ if command -v codex >/dev/null 2>&1; then
+   exit 0
+ fi
+ 
+-echo "[mod:codex] installing @openai/codex with pnpm"
+-paseo-mod-install node @openai/codex
++package="@openai/codex"
++version_file="/etc/paseo-mods/codex/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:codex] installing ${package} with pnpm"
++paseo-mod-install node "$package"
+ echo "[mod:codex] done ($(command -v codex))"
+diff --git a/docker/mods/copilot/Dockerfile b/docker/mods/copilot/Dockerfile
+index 0c908e14b..2274b12c9 100644
+--- a/docker/mods/copilot/Dockerfile
++++ b/docker/mods/copilot/Dockerfile
+@@ -1,3 +1,25 @@
+ # syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=copilot
++ARG PASEO_MOD_PACKAGE=@github/copilot
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
+ FROM scratch
++ARG PASEO_MOD_NAME=copilot
++ARG PASEO_MOD_PACKAGE=@github/copilot
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
+ COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install b/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install
+index a009e2dd6..ddf631944 100755
+--- a/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install
++++ b/docker/mods/copilot/root-layer/etc/paseo-mods/copilot/install
+@@ -6,6 +6,15 @@ if command -v copilot >/dev/null 2>&1; then
+   exit 0
+ fi
+ 
+-echo "[mod:copilot] installing @github/copilot with pnpm"
+-paseo-mod-install node @github/copilot
++package="@github/copilot"
++version_file="/etc/paseo-mods/copilot/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:copilot] installing ${package} with pnpm"
++paseo-mod-install node "$package"
+ echo "[mod:copilot] done ($(command -v copilot))"
+diff --git a/docker/mods/opencode/Dockerfile b/docker/mods/opencode/Dockerfile
+index 0c908e14b..b91e46b73 100644
+--- a/docker/mods/opencode/Dockerfile
++++ b/docker/mods/opencode/Dockerfile
+@@ -1,3 +1,25 @@
+ # syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=opencode
++ARG PASEO_MOD_PACKAGE=opencode-ai
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
+ FROM scratch
++ARG PASEO_MOD_NAME=opencode
++ARG PASEO_MOD_PACKAGE=opencode-ai
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
+ COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install b/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install
+index 3ce2bf664..33d3d2bb3 100755
+--- a/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install
++++ b/docker/mods/opencode/root-layer/etc/paseo-mods/opencode/install
+@@ -6,6 +6,15 @@ if command -v opencode >/dev/null 2>&1; then
+   exit 0
+ fi
+ 
+-echo "[mod:opencode] installing opencode-ai with pnpm"
+-paseo-mod-install node opencode-ai
++package="opencode-ai"
++version_file="/etc/paseo-mods/opencode/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:opencode] installing ${package} with pnpm"
++paseo-mod-install node "$package"
+ echo "[mod:opencode] done ($(command -v opencode))"
+diff --git a/docker/mods/pi/Dockerfile b/docker/mods/pi/Dockerfile
+index 0c908e14b..8de6015b9 100644
+--- a/docker/mods/pi/Dockerfile
++++ b/docker/mods/pi/Dockerfile
+@@ -1,3 +1,25 @@
+ # syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=pi
++ARG PASEO_MOD_PACKAGE=@earendil-works/pi-coding-agent
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
+ FROM scratch
++ARG PASEO_MOD_NAME=pi
++ARG PASEO_MOD_PACKAGE=@earendil-works/pi-coding-agent
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
+ COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/pi/root-layer/etc/paseo-mods/pi/install b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+index a1be15521..65470573a 100755
+--- a/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
++++ b/docker/mods/pi/root-layer/etc/paseo-mods/pi/install
+@@ -7,6 +7,16 @@ if command -v pi >/dev/null 2>&1; then
+ fi
+ 
+ PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
++if [[ "$PI_NPM_PACKAGE" == "@earendil-works/pi-coding-agent" ]]; then
++  version_file="/etc/paseo-mods/pi/package-version"
++  if [[ -r "$version_file" ]]; then
++    version="$(tr -d '[:space:]' < "$version_file")"
++    if [[ -n "$version" ]]; then
++      PI_NPM_PACKAGE="${PI_NPM_PACKAGE}@${version}"
++    fi
++  fi
++fi
++
+ echo "[mod:pi] installing ${PI_NPM_PACKAGE} with pnpm"
+ paseo-mod-install node --ignore-scripts "${PI_NPM_PACKAGE}"
+ 

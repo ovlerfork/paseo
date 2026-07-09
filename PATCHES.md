@@ -20,6 +20,8 @@ The current series carries fork-owned source patches again:
 - `0002-fix-docker-add-fish-completions.patch` adds `fish` and `bash-completion` to both Docker runtime build paths and includes build-time checks for `fish --version` and `/usr/share/bash-completion/bash_completion`.
 - `0003-fix-docker-add-ssh-runtime.patch` adds an optional Docker SSH runtime. It installs `openssh-server`, keeps SSH disabled by default, starts key-only `sshd` when `PASEO_SSH_ENABLED=true`, reads authorized keys from a Compose-friendly config path, and documents the opt-in Compose config mount.
 - `0004-fix-docker-restore-agent-Docker-Mods.patch` restores runtime agent Docker Mods on the current `tini` entrypoint without baking agent CLIs into the base image. It adds the `docker-mods` loader, a `paseo-mod-install` helper that prefers `pnpm` for global Node tools and `uv` for Python tools, `jq`, `busybox-static`, common diagnostics/networking utilities, and mod images for Claude Code, Codex, Copilot, OpenCode, and Pi.
+- `0005-fix-docker-add-extended-runtime-tools.patch` adds extended runtime diagnostics and terminal tools including `tmux`, `htop`, `btop`, `strace`, `socat`, `openssl`, `gnupg`, `yq`, `sqlite3`, `sudo`, `net-tools`, `traceroute`, and `tcpdump`.
+- `0006-fix-docker-pin-mod-package-versions.patch` lets Docker Mod images carry the resolved npm package name and version in labels and layer metadata. Mod install hooks read that metadata and install the matching package version instead of implicitly floating at install time.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 
@@ -51,6 +53,7 @@ To add patches again later, create a branch from the upstream ref, make the loca
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
 - `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built default image as `ghcr.io/<fork-owner>/paseo:<version>`, `:<version>-<source-sha>`, and `:latest`.
 - The same workflow also publishes the root-runtime Ubuntu sandbox variant as `:<version>-ubuntu-sandbox`, `:<version>-<source-sha>-ubuntu-sandbox`, and `:ubuntu-sandbox`.
+- The same workflow runs on an hourly schedule for Docker Mods only. For each mod it resolves the matching npm package version and skips publishing when `ghcr.io/<fork-owner>/mods:<mod>-pkg-<package-version>` already exists.
 - `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
 
 Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so they still produce a valid `patched` branch and fork-owned build outputs if the patch series is pruned again later.

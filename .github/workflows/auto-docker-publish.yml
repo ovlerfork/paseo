@@ -1,6 +1,8 @@
 name: Auto Docker Publish
 
 on:
+  schedule:
+    - cron: "37 * * * *"
   workflow_run:
     workflows: ["Patch Check"]
     types: [completed]
@@ -20,7 +22,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event.workflow_run.head_sha }}
+  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && 'scheduled-mods' || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 env:
@@ -30,11 +32,12 @@ env:
 jobs:
   prepare:
     if: >
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'patchset')
     runs-on: ubuntu-latest
     concurrency:
-      group: patched-prepare-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event.workflow_run.head_sha }}
+      group: patched-prepare-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && 'scheduled-mods' || github.event.workflow_run.head_sha }}
       cancel-in-progress: false
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -119,6 +122,7 @@ jobs:
           echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} patched_sha=${patched_sha}"
 
   publish-source-image:
+    if: github.event_name != 'schedule'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish ${{ matrix.image.name }}
@@ -209,7 +213,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        agent: [claude-code, codex, copilot, opencode, pi]
+        include:
+          - agent: claude-code
+            npm_package: "@anthropic-ai/claude-code"
+          - agent: codex
+            npm_package: "@openai/codex"
+          - agent: copilot
+            npm_package: "@github/copilot"
+          - agent: opencode
+            npm_package: "opencode-ai"
+          - agent: pi
+            npm_package: "@earendil-works/pi-coding-agent"
     steps:
       - name: Checkout patched source
         uses: actions/checkout@v4
@@ -227,15 +241,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve mod package version
+        id: mod
+        env:
+          AGENT: ${{ matrix.agent }}
+          EVENT_NAME: ${{ github.event_name }}
+          IMAGE_BASE: ghcr.io/${{ needs.prepare.outputs.owner }}/mods
+          NPM_PACKAGE: ${{ matrix.npm_package }}
+          RESOLVED_VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          package_version="$(npm view "${NPM_PACKAGE}" version --silent)"
+          if [[ -z "${package_version}" ]]; then
+            echo "Failed to resolve ${NPM_PACKAGE} version." >&2
+            exit 1
+          fi
+
+          package_version_tag="$(printf '%s' "${package_version}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g')"
+          package_ref="${IMAGE_BASE}:${AGENT}-pkg-${package_version_tag}"
+
+          should_build=true
+          if [[ "${EVENT_NAME}" == "schedule" ]] && docker buildx imagetools inspect "${package_ref}" >/dev/null 2>&1; then
+            should_build=false
+          fi
+
+          tags="${IMAGE_BASE}:${AGENT}"
+          tags="${tags}"$'\n'"${package_ref}"
+          if [[ "${EVENT_NAME}" != "schedule" ]]; then
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${AGENT}-${RESOLVED_VERSION}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${AGENT}-${SOURCE_SHA}"
+          fi
+
+          echo "package=${NPM_PACKAGE}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          echo "package_version_tag=${package_version_tag}" >> "$GITHUB_OUTPUT"
+          echo "package_ref=${package_ref}" >> "$GITHUB_OUTPUT"
+          echo "should_build=${should_build}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ "${should_build}" == "true" ]]; then
+            echo "Will publish ${AGENT} for ${NPM_PACKAGE}@${package_version}."
+          else
+            echo "Skipping ${AGENT}; ${package_ref} already exists."
+          fi
+
       - name: Build and push mod image
+        if: steps.mod.outputs.should_build == 'true'
         uses: docker/build-push-action@v7
         with:
           context: docker/mods/${{ matrix.agent }}
           file: docker/mods/${{ matrix.agent }}/Dockerfile
           platforms: ${{ env.PLATFORMS }}
-          tags: |
-            ghcr.io/${{ needs.prepare.outputs.owner }}/mods:${{ matrix.agent }}
-            ghcr.io/${{ needs.prepare.outputs.owner }}/mods:${{ matrix.agent }}-${{ needs.prepare.outputs.version }}
-            ghcr.io/${{ needs.prepare.outputs.owner }}/mods:${{ matrix.agent }}-${{ needs.prepare.outputs.source_sha }}
+          build-args: |
+            PASEO_MOD_NAME=${{ matrix.agent }}
+            PASEO_MOD_PACKAGE=${{ matrix.npm_package }}
+            PASEO_MOD_PACKAGE_VERSION=${{ steps.mod.outputs.package_version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.mod.outputs.package_version }}
+            org.ovlerfork.paseo.mod.name=${{ matrix.agent }}
+            org.ovlerfork.paseo.mod.package=${{ matrix.npm_package }}
+            org.ovlerfork.paseo.mod.package.version=${{ steps.mod.outputs.package_version }}
+          tags: ${{ steps.mod.outputs.tags }}
           push: true
           provenance: false
+
+      - name: Skip unchanged mod image
+        if: steps.mod.outputs.should_build != 'true'
+        run: echo "No publish needed for ${{ matrix.agent }}; package version ${{ steps.mod.outputs.package_version }} is already present."
