@@ -7,6 +7,16 @@ if command -v pi >/dev/null 2>&1; then
 fi
 
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
+if [[ "$PI_NPM_PACKAGE" == "@earendil-works/pi-coding-agent" ]]; then
+  version_file="/etc/paseo-mods/pi/package-version"
+  if [[ -r "$version_file" ]]; then
+    version="$(tr -d '[:space:]' < "$version_file")"
+    if [[ -n "$version" ]]; then
+      PI_NPM_PACKAGE="${PI_NPM_PACKAGE}@${version}"
+    fi
+  fi
+fi
+
 echo "[mod:pi] installing ${PI_NPM_PACKAGE} with pnpm"
 paseo-mod-install node --ignore-scripts "${PI_NPM_PACKAGE}"
 
