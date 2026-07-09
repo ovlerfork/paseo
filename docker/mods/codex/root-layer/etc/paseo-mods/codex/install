@@ -6,6 +6,15 @@ if command -v codex >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "[mod:codex] installing @openai/codex with pnpm"
-paseo-mod-install node @openai/codex
+package="@openai/codex"
+version_file="/etc/paseo-mods/codex/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:codex] installing ${package} with pnpm"
+paseo-mod-install node "$package"
 echo "[mod:codex] done ($(command -v codex))"
