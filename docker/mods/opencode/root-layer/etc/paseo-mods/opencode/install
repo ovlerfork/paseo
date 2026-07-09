@@ -6,6 +6,15 @@ if command -v opencode >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "[mod:opencode] installing opencode-ai with pnpm"
-paseo-mod-install node opencode-ai
+package="opencode-ai"
+version_file="/etc/paseo-mods/opencode/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:opencode] installing ${package} with pnpm"
+paseo-mod-install node "$package"
 echo "[mod:opencode] done ($(command -v opencode))"
