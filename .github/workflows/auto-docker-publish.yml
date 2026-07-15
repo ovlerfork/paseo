@@ -2,7 +2,7 @@ name: Auto Docker Publish
 
 on:
   schedule:
-    - cron: "37 * * * *"
+    - cron: "*/5 * * * *"
   workflow_run:
     workflows: ["Patch Check"]
     types: [completed]
@@ -44,6 +44,7 @@ jobs:
       owner: ${{ steps.meta.outputs.owner }}
       source_sha: ${{ steps.meta.outputs.source_sha }}
       patched_sha: ${{ steps.meta.outputs.patched_sha }}
+      publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
     steps:
       - name: Checkout patchset
         uses: actions/checkout@v4
@@ -121,8 +122,47 @@ jobs:
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} patched_sha=${patched_sha}"
 
+      - name: Check scheduled source image status
+        id: source_image_status
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          RESOLVED_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          owner_type="$(gh api "users/${REPO_OWNER}" --jq '.type')"
+          if [[ "${owner_type}" == "Organization" ]]; then
+            package_path="orgs/${REPO_OWNER}/packages/container/paseo/versions?per_page=100"
+          else
+            package_path="users/${REPO_OWNER}/packages/container/paseo/versions?per_page=100"
+          fi
+
+          existing_tags="$(
+            gh api "${package_path}" --paginate --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
+          )"
+
+          default_tag_exists=false
+          ubuntu_tag_exists=false
+          if grep -Fxq "${RESOLVED_VERSION}" <<<"${existing_tags}"; then
+            default_tag_exists=true
+          fi
+          if grep -Fxq "${RESOLVED_VERSION}-ubuntu-sandbox" <<<"${existing_tags}"; then
+            ubuntu_tag_exists=true
+          fi
+
+          publish_source_images=true
+          if [[ "${default_tag_exists}" == "true" && "${ubuntu_tag_exists}" == "true" ]]; then
+            publish_source_images=false
+          fi
+
+          echo "publish_source_images=${publish_source_images}" >> "$GITHUB_OUTPUT"
+          echo "default_tag_exists=${default_tag_exists}" >> "$GITHUB_OUTPUT"
+          echo "ubuntu_tag_exists=${ubuntu_tag_exists}" >> "$GITHUB_OUTPUT"
+          echo "Scheduled source image publish needed: ${publish_source_images}"
+
   publish-source-image:
-    if: github.event_name != 'schedule'
+    if: needs.prepare.outputs.publish_source_images == 'true'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish ${{ matrix.image.name }}

@@ -51,9 +51,9 @@ To add patches again later, create a branch from the upstream ref, make the loca
 
 - `Upstream Sync` keeps `main` aligned to upstream `getpaseo/paseo:main`.
 - `Patch Check` verifies that the patch series applies cleanly to current upstream.
-- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built default image as `ghcr.io/<fork-owner>/paseo:<version>`, `:<version>-<source-sha>`, and `:latest`.
+- `Auto Docker Publish` runs after a successful `Patch Check` on `patchset`, by manual dispatch, or on a five-minute schedule. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then builds and publishes the source-built default image as `ghcr.io/<fork-owner>/paseo:<version>`, `:<version>-<source-sha>`, and `:latest`. Scheduled runs publish source images only when the fork GHCR namespace is missing the current patched upstream version tag.
 - The same workflow also publishes the root-runtime Ubuntu sandbox variant as `:<version>-ubuntu-sandbox`, `:<version>-<source-sha>-ubuntu-sandbox`, and `:ubuntu-sandbox`.
-- The same workflow runs on an hourly schedule for Docker Mods only. For each mod it resolves the matching npm package version and skips publishing when `ghcr.io/<fork-owner>/mods:<mod>-pkg-<package-version>` already exists.
+- The same workflow checks Docker Mods on the same schedule. For each mod it resolves the matching npm package version and skips publishing when `ghcr.io/<fork-owner>/mods:<mod>-pkg-<package-version>` already exists.
 - `Auto Desktop Build` runs after a successful `Patch Check` on `patchset`, or by manual dispatch. It applies `patches/cur`, drops upstream workflow files from the generated tree so GitHub can accept the branch update, force-updates `patched`, then uploads Linux, Windows, and macOS desktop artifacts.
 
 Both artifact workflows use the same empty-patch-safe `nullglob` array pattern as `Patch Check`, so they still produce a valid `patched` branch and fork-owned build outputs if the patch series is pruned again later.
