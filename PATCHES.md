@@ -22,7 +22,6 @@ The current series carries fork-owned source patches again:
 - `0004-fix-docker-restore-agent-Docker-Mods.patch` restores runtime agent Docker Mods on the current `tini` entrypoint without baking agent CLIs into the base image. It adds the `docker-mods` loader, a `paseo-mod-install` helper that prefers `pnpm` for global Node tools and `uv` for Python tools, `jq`, `busybox-static`, common diagnostics/networking utilities, and mod images for Claude Code, Codex, Copilot, OpenCode, and Pi.
 - `0005-fix-docker-add-extended-runtime-tools.patch` adds extended runtime diagnostics and terminal tools including `tmux`, `htop`, `btop`, `strace`, `socat`, `openssl`, `gnupg`, `yq`, `sqlite3`, `sudo`, `net-tools`, `traceroute`, and `tcpdump`.
 - `0006-fix-docker-pin-mod-package-versions.patch` lets Docker Mod images carry the resolved npm package name and version in labels and layer metadata. Mod install hooks read that metadata and install the matching package version instead of implicitly floating at install time.
-- `0007-fix-docker-set-Codex-agent-thread-cap.patch` makes the Codex Docker Mod ensure the runtime user's `config.toml` has `[agents] max_threads = 64` before the daemon launches Codex app-server sessions.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 
