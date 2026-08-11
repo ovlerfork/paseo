@@ -36,6 +36,12 @@ assert_equals false "$(docker_publish_source_images_needed true true)" "both imm
 assert_equals true "$(docker_publish_source_images_needed true false)" "missing Ubuntu immutable tag publishes"
 assert_equals true "$(docker_publish_source_images_needed false true)" "missing default immutable tag publishes"
 assert_equals true "$(docker_publish_source_images_needed false false)" "absent package publishes"
+assert_equals $'dev-0123456789abcdef0123456789abcdef01234567\ndev-0123456789abcdef0123456789abcdef01234567-ubuntu-sandbox' \
+  "$(docker_publish_immutable_tags dev "${VERSION}" "${UPSTREAM_SHA}")" \
+  "development immutable tags use the full upstream SHA"
+assert_equals $'1.2.3\n1.2.3-ubuntu-sandbox' \
+  "$(docker_publish_immutable_tags release "${VERSION}" "${UPSTREAM_SHA}")" \
+  "release immutable tags use the release version"
 
 fake_bin="$(mktemp -d)"
 trap 'rm -rf "${fake_bin}"' EXIT
