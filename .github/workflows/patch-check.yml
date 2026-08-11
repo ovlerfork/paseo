@@ -12,10 +12,15 @@ on:
         description: "Upstream ref to test against"
         required: false
         default: "main"
+      publish_dev:
+        description: "Publish development images after a successful check"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 jobs:
   apply-and-test:
@@ -34,6 +39,11 @@ jobs:
           ref: ${{ inputs.upstream_ref || 'main' }}
           path: source
           fetch-depth: 0
+
+      - name: Record exact upstream SHA
+        id: upstream
+        working-directory: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Apply patches
         id: apply
@@ -90,6 +100,19 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/*.sh
+
+      - name: Dispatch development image publish
+        if: steps.apply.outputs.status == 'ok' && inputs.publish_dev == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run auto-docker-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref patchset \
+            -f upstream_ref="${UPSTREAM_SHA}" \
+            -f publish_mode=dev
 
       - name: Fail on patch conflict
         if: steps.apply.outputs.status != 'ok'

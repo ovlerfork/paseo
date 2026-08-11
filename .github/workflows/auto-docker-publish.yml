@@ -16,6 +16,14 @@ on:
         description: "Paseo version to build. Must match the patched source package.json version."
         required: false
         default: ""
+      publish_mode:
+        description: "Image tag policy to publish"
+        required: false
+        default: release
+        type: choice
+        options:
+          - release
+          - dev
 
 permissions:
   contents: write
@@ -43,7 +51,9 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       owner: ${{ steps.meta.outputs.owner }}
       source_sha: ${{ steps.meta.outputs.source_sha }}
+      upstream_sha: ${{ steps.meta.outputs.upstream_sha }}
       patched_sha: ${{ steps.meta.outputs.patched_sha }}
+      publish_mode: ${{ steps.meta.outputs.publish_mode }}
       publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
     steps:
       - name: Checkout patchset
@@ -59,6 +69,11 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || 'main' }}
           path: source
           fetch-depth: 0
+
+      - name: Record exact upstream SHA
+        id: upstream
+        working-directory: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Apply patches
         working-directory: source
@@ -83,7 +98,6 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
-          echo "SOURCE_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
           if [[ -d .github/workflows ]]; then
             rm -rf .github/workflows
             git add -A .github/workflows
@@ -104,8 +118,9 @@ jobs:
         working-directory: source
         env:
           INPUT_PASEO_VERSION: ${{ inputs.paseo_version }}
+          PUBLISH_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode || 'release' }}
           REPO_OWNER: ${{ github.repository_owner }}
-          SOURCE_SHA: ${{ env.SOURCE_SHA }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
           set -euo pipefail
           if [[ -n "${INPUT_PASEO_VERSION}" ]]; then
@@ -115,20 +130,24 @@ jobs:
           fi
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
-          source_sha="${SOURCE_SHA}"
+          source_sha="$(git rev-parse --short HEAD)"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "owner=${owner}" >> "$GITHUB_OUTPUT"
           echo "patched_sha=${patched_sha}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} patched_sha=${patched_sha}"
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "publish_mode=${PUBLISH_MODE}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} upstream_sha=${UPSTREAM_SHA} patched_sha=${patched_sha} publish_mode=${PUBLISH_MODE}"
 
-      - name: Check scheduled source image status
+      - name: Check source image status
         id: source_image_status
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_mode == 'dev')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
           RESOLVED_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_MODE: ${{ steps.meta.outputs.publish_mode }}
+          UPSTREAM_SHA: ${{ steps.meta.outputs.upstream_sha }}
         run: |
           set -euo pipefail
           owner_type="$(gh api "users/${REPO_OWNER}" --jq '.type')"
@@ -144,10 +163,17 @@ jobs:
 
           default_tag_exists=false
           ubuntu_tag_exists=false
-          if grep -Fxq "${RESOLVED_VERSION}" <<<"${existing_tags}"; then
+          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
+            default_immutable_tag="dev-${UPSTREAM_SHA}"
+            ubuntu_immutable_tag="dev-${UPSTREAM_SHA}-ubuntu-sandbox"
+          else
+            default_immutable_tag="${RESOLVED_VERSION}"
+            ubuntu_immutable_tag="${RESOLVED_VERSION}-ubuntu-sandbox"
+          fi
+          if grep -Fxq "${default_immutable_tag}" <<<"${existing_tags}"; then
             default_tag_exists=true
           fi
-          if grep -Fxq "${RESOLVED_VERSION}-ubuntu-sandbox" <<<"${existing_tags}"; then
+          if grep -Fxq "${ubuntu_immutable_tag}" <<<"${existing_tags}"; then
             ubuntu_tag_exists=true
           fi
 
@@ -159,7 +185,7 @@ jobs:
           echo "publish_source_images=${publish_source_images}" >> "$GITHUB_OUTPUT"
           echo "default_tag_exists=${default_tag_exists}" >> "$GITHUB_OUTPUT"
           echo "ubuntu_tag_exists=${ubuntu_tag_exists}" >> "$GITHUB_OUTPUT"
-          echo "Scheduled source image publish needed: ${publish_source_images}"
+          echo "Source image publish needed for ${PUBLISH_MODE}: ${publish_source_images}"
 
   publish-source-image:
     if: needs.prepare.outputs.publish_source_images == 'true'
@@ -175,13 +201,13 @@ jobs:
         image:
           - name: default
             cache_scope: paseo-source
-            moving_tag: latest
+            release_moving_tag: latest
             runtime_image: node:24.16.0-bookworm-slim
             runtime_user: paseo
             variant: ""
           - name: ubuntu-sandbox
             cache_scope: paseo-source-ubuntu-sandbox
-            moving_tag: ubuntu-sandbox
+            release_moving_tag: ubuntu-sandbox
             runtime_image: ubuntu:24.04
             runtime_user: root
             variant: ubuntu-sandbox
@@ -196,20 +222,28 @@ jobs:
         id: tags
         env:
           IMAGE_BASE: ghcr.io/${{ needs.prepare.outputs.owner }}/paseo
-          MOVING_TAG: ${{ matrix.image.moving_tag }}
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          RELEASE_MOVING_TAG: ${{ matrix.image.release_moving_tag }}
           RESOLVED_VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
           VARIANT: ${{ matrix.image.variant }}
         run: |
           set -euo pipefail
-          if [[ -n "${VARIANT}" ]]; then
+          if [[ "${PUBLISH_MODE}" == "dev" && -n "${VARIANT}" ]]; then
+            tags="${IMAGE_BASE}:dev-${VARIANT}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:dev-${UPSTREAM_SHA}-${VARIANT}"
+          elif [[ "${PUBLISH_MODE}" == "dev" ]]; then
+            tags="${IMAGE_BASE}:dev"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:dev-${UPSTREAM_SHA}"
+          elif [[ -n "${VARIANT}" ]]; then
             tags="${IMAGE_BASE}:${RESOLVED_VERSION}-${VARIANT}"
             tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}-${VARIANT}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${MOVING_TAG}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${RELEASE_MOVING_TAG}"
           else
             tags="${IMAGE_BASE}:${RESOLVED_VERSION}"
             tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${MOVING_TAG}"
+            tags="${tags}"$'\n'"${IMAGE_BASE}:${RELEASE_MOVING_TAG}"
           fi
           {
             echo "tags<<EOF"
@@ -244,6 +278,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.cache_scope }},mode=max
 
   publish-mod-images:
+    if: needs.prepare.outputs.publish_mode != 'dev'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish mod ${{ matrix.agent }}

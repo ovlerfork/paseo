@@ -58,4 +58,5 @@ jobs:
           gh workflow run patch-check.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref patchset \
-            -f upstream_ref="${{ steps.update.outputs.upstream_sha }}"
+            -f upstream_ref="${{ steps.update.outputs.upstream_sha }}" \
+            -f publish_dev=true
