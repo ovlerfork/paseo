@@ -31,6 +31,18 @@ docker_publish_source_images_needed() {
   fi
 }
 
+docker_publish_immutable_tags() {
+  local publish_mode="$1"
+  local resolved_version="$2"
+  local upstream_sha="$3"
+
+  if [[ "${publish_mode}" == "dev" ]]; then
+    printf 'dev-%s\ndev-%s-ubuntu-sandbox\n' "${upstream_sha}" "${upstream_sha}"
+  else
+    printf '%s\n%s-ubuntu-sandbox\n' "${resolved_version}" "${resolved_version}"
+  fi
+}
+
 docker_publish_existing_tags() {
   local package_path="$1"
   local tags_file

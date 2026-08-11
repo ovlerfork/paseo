@@ -176,15 +176,11 @@ jobs:
 
           existing_tags="$(docker_publish_existing_tags "${package_path}")"
 
+          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${UPSTREAM_SHA}")
+          default_immutable_tag="${immutable_tags[0]}"
+          ubuntu_immutable_tag="${immutable_tags[1]}"
           default_tag_exists=false
           ubuntu_tag_exists=false
-          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
-            default_immutable_tag="dev-${UPSTREAM_SHA}"
-            ubuntu_immutable_tag="dev-${UPSTREAM_SHA}-ubuntu-sandbox"
-          else
-            default_immutable_tag="${RESOLVED_VERSION}"
-            ubuntu_immutable_tag="${RESOLVED_VERSION}-ubuntu-sandbox"
-          fi
           if grep -Fxq "${default_immutable_tag}" <<<"${existing_tags}"; then
             default_tag_exists=true
           fi
