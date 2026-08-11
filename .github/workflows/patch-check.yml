@@ -104,7 +104,15 @@ jobs:
         working-directory: patchset
         run: |
           set -euo pipefail
-          bash -n scripts/*.sh
+          bash -n scripts/*.sh .github/workflows/docker-publish-policy.sh tests/*.sh
+
+      - name: Run publish policy tests
+        if: steps.apply.outputs.status == 'ok'
+        working-directory: patchset
+        run: |
+          set -euo pipefail
+          bash tests/auto-docker-publish-policy.test.sh
+          bash tests/auto-docker-publish-layout.test.sh
 
       - name: Dispatch development image publish
         if: steps.apply.outputs.status == 'ok' && inputs.publish_dev == true
