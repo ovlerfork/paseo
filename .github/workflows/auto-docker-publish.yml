@@ -57,6 +57,7 @@ jobs:
       source_sha: ${{ steps.meta.outputs.source_sha }}
       upstream_sha: ${{ steps.meta.outputs.upstream_sha }}
       patched_sha: ${{ steps.meta.outputs.patched_sha }}
+      patchset_sha: ${{ steps.patchset.outputs.sha }}
       publish_mode: ${{ steps.meta.outputs.publish_mode }}
       publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
     steps:
@@ -65,6 +66,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode == 'dev' && inputs.patchset_ref || 'patchset' }}
           path: patchset
+
+      - name: Record exact patchset SHA
+        id: patchset
+        working-directory: patchset
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout upstream source
         uses: actions/checkout@v4
@@ -218,10 +224,18 @@ jobs:
             runtime_user: root
             variant: ubuntu-sandbox
     steps:
-      - name: Checkout patched source
+      - name: Checkout sanitized patched source
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.patched_sha }}
+          path: source
+          fetch-depth: 0
+
+      - name: Checkout publish policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patchset_sha }}
+          path: policy
           fetch-depth: 0
 
       - name: Compute tags
@@ -236,7 +250,7 @@ jobs:
           VARIANT: ${{ matrix.image.variant }}
         run: |
           set -euo pipefail
-          source "${GITHUB_WORKSPACE}/.github/workflows/docker-publish-policy.sh"
+          source "${GITHUB_WORKSPACE}/policy/.github/workflows/docker-publish-policy.sh"
           tags="$(docker_publish_source_tags "${IMAGE_BASE}" "${PUBLISH_MODE}" "${RELEASE_MOVING_TAG}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}" "${VARIANT}")"
           {
             echo "tags<<EOF"
@@ -257,8 +271,8 @@ jobs:
       - name: Build and push source image
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: docker/base/Dockerfile
+          context: source
+          file: source/docker/base/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.prepare.outputs.version }}
