@@ -24,6 +24,10 @@ on:
         options:
           - release
           - dev
+      patchset_ref:
+        description: "Exact patchset commit to use for development publishing"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -59,7 +63,7 @@ jobs:
       - name: Checkout patchset
         uses: actions/checkout@v4
         with:
-          ref: patchset
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode == 'dev' && inputs.patchset_ref || 'patchset' }}
           path: patchset
 
       - name: Checkout upstream source
@@ -94,6 +98,11 @@ jobs:
           done
           echo "Applied ${APPLIED} patch(es)."
 
+      - name: Record pre-sanitization source SHA
+        id: source_identity
+        working-directory: source
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Sanitize generated branch
         working-directory: source
         run: |
@@ -121,6 +130,7 @@ jobs:
           PUBLISH_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode || 'release' }}
           REPO_OWNER: ${{ github.repository_owner }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          SOURCE_SHA: ${{ steps.source_identity.outputs.sha }}
         run: |
           set -euo pipefail
           if [[ -n "${INPUT_PASEO_VERSION}" ]]; then
@@ -130,7 +140,7 @@ jobs:
           fi
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
-          source_sha="$(git rev-parse --short HEAD)"
+          source_sha="${SOURCE_SHA}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "owner=${owner}" >> "$GITHUB_OUTPUT"
           echo "patched_sha=${patched_sha}" >> "$GITHUB_OUTPUT"
@@ -150,6 +160,7 @@ jobs:
           UPSTREAM_SHA: ${{ steps.meta.outputs.upstream_sha }}
         run: |
           set -euo pipefail
+          source "${GITHUB_WORKSPACE}/patchset/.github/workflows/docker-publish-policy.sh"
           owner_type="$(gh api "users/${REPO_OWNER}" --jq '.type')"
           if [[ "${owner_type}" == "Organization" ]]; then
             package_path="orgs/${REPO_OWNER}/packages/container/paseo/versions?per_page=100"
@@ -157,9 +168,7 @@ jobs:
             package_path="users/${REPO_OWNER}/packages/container/paseo/versions?per_page=100"
           fi
 
-          existing_tags="$(
-            gh api "${package_path}" --paginate --jq '.[] | .metadata.container.tags[]?' 2>/dev/null || true
-          )"
+          existing_tags="$(docker_publish_existing_tags "${package_path}")"
 
           default_tag_exists=false
           ubuntu_tag_exists=false
@@ -177,10 +186,7 @@ jobs:
             ubuntu_tag_exists=true
           fi
 
-          publish_source_images=true
-          if [[ "${default_tag_exists}" == "true" && "${ubuntu_tag_exists}" == "true" ]]; then
-            publish_source_images=false
-          fi
+          publish_source_images="$(docker_publish_source_images_needed "${default_tag_exists}" "${ubuntu_tag_exists}")"
 
           echo "publish_source_images=${publish_source_images}" >> "$GITHUB_OUTPUT"
           echo "default_tag_exists=${default_tag_exists}" >> "$GITHUB_OUTPUT"
@@ -230,21 +236,8 @@ jobs:
           VARIANT: ${{ matrix.image.variant }}
         run: |
           set -euo pipefail
-          if [[ "${PUBLISH_MODE}" == "dev" && -n "${VARIANT}" ]]; then
-            tags="${IMAGE_BASE}:dev-${VARIANT}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:dev-${UPSTREAM_SHA}-${VARIANT}"
-          elif [[ "${PUBLISH_MODE}" == "dev" ]]; then
-            tags="${IMAGE_BASE}:dev"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:dev-${UPSTREAM_SHA}"
-          elif [[ -n "${VARIANT}" ]]; then
-            tags="${IMAGE_BASE}:${RESOLVED_VERSION}-${VARIANT}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}-${VARIANT}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${RELEASE_MOVING_TAG}"
-          else
-            tags="${IMAGE_BASE}:${RESOLVED_VERSION}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${RESOLVED_VERSION}-${SOURCE_SHA}"
-            tags="${tags}"$'\n'"${IMAGE_BASE}:${RELEASE_MOVING_TAG}"
-          fi
+          source "${GITHUB_WORKSPACE}/.github/workflows/docker-publish-policy.sh"
+          tags="$(docker_publish_source_tags "${IMAGE_BASE}" "${PUBLISH_MODE}" "${RELEASE_MOVING_TAG}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}" "${VARIANT}")"
           {
             echo "tags<<EOF"
             echo "${tags}"

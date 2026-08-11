@@ -32,6 +32,11 @@ jobs:
           ref: patchset
           path: patchset
 
+      - name: Record exact patchset SHA
+        id: patchset
+        working-directory: patchset
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout upstream source
         uses: actions/checkout@v4
         with:
@@ -106,12 +111,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          PATCHSET_SHA: ${{ steps.patchset.outputs.sha }}
         run: |
           set -euo pipefail
           gh workflow run auto-docker-publish.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref patchset \
             -f upstream_ref="${UPSTREAM_SHA}" \
+            -f patchset_ref="${PATCHSET_SHA}" \
             -f publish_mode=dev
 
       - name: Fail on patch conflict
