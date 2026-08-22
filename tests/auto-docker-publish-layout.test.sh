@@ -59,12 +59,16 @@ if ! grep -Fqx '        default: ""' "${workflow_file}"; then
   printf 'workflow dispatch must allow prerelease resolution without an upstream ref\n' >&2
   exit 1
 fi
-if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
+if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
   printf 'workflow must resolve the latest published upstream prerelease dynamically\n' >&2
   exit 1
 fi
-if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
+if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
   printf 'workflow must resolve the latest published upstream stable release dynamically\n' >&2
+  exit 1
+fi
+if grep -Fq 'gh api --paginate --slurp' "${workflow_file}"; then
+  printf 'workflow must not combine unsupported gh api --paginate --slurp flags\n' >&2
   exit 1
 fi
 if grep -Fq '"${version}" == *-*' "${workflow_file}"; then
