@@ -42,8 +42,12 @@ assert_prepare_contains '      - name: Resolve upstream source ref'
 assert_prepare_contains '        id: upstream_ref'
 assert_prepare_contains "          ref: \${{ steps.upstream_ref.outputs.ref }}"
 assert_prepare_contains '          EVENT_NAME: ${{ github.event_name }}'
-assert_prepare_contains '          if [[ "${EVENT_NAME}" != "workflow_dispatch" && "${version}" == *-* ]]; then'
-assert_prepare_contains '            PUBLISH_MODE=prerelease'
+assert_prepare_contains '            publish_mode=prerelease'
+assert_prepare_contains '            publish_mode=dev'
+assert_prepare_contains '          elif [[ "${publish_mode}" == "dev" ]]; then'
+assert_prepare_contains '            upstream_ref=main'
+assert_prepare_contains '          elif [[ "${publish_mode}" == "prerelease" ]]; then'
+assert_prepare_contains '          PUBLISH_MODE: ${{ steps.upstream_ref.outputs.publish_mode }}'
 assert_prepare_contains "        if: steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease'"
 assert_prepare_contains '          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}'
 assert_prepare_contains '          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}")'
@@ -55,8 +59,16 @@ if ! grep -Fqx '        default: ""' "${workflow_file}"; then
   printf 'workflow dispatch must allow prerelease resolution without an upstream ref\n' >&2
   exit 1
 fi
-if ! grep -Fqx "            upstream_ref=\"\$(gh api 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
+if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
   printf 'workflow must resolve the latest published upstream prerelease dynamically\n' >&2
+  exit 1
+fi
+if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
+  printf 'workflow must resolve the latest published upstream stable release dynamically\n' >&2
+  exit 1
+fi
+if grep -Fq '"${version}" == *-*' "${workflow_file}"; then
+  printf 'workflow must select publish mode from the upstream ref policy, not package metadata\n' >&2
   exit 1
 fi
 if ! grep -Fqx '        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"' <<<"${source_identity_step}"; then
