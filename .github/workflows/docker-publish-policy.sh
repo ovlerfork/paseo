@@ -38,10 +38,13 @@ docker_publish_source_images_needed() {
 docker_publish_immutable_tags() {
   local publish_mode="$1"
   local resolved_version="$2"
-  local upstream_sha="$3"
+  local source_sha="$3"
+  local upstream_sha="$4"
 
   if [[ "${publish_mode}" == "dev" ]]; then
     printf 'dev-%s\ndev-%s-ubuntu-sandbox\n' "${upstream_sha}" "${upstream_sha}"
+  elif [[ "${publish_mode}" == "prerelease" ]]; then
+    printf 'prerelease-%s\nprerelease-%s-ubuntu-sandbox\n' "${source_sha}" "${source_sha}"
   else
     printf '%s\n%s-ubuntu-sandbox\n' "${resolved_version}" "${resolved_version}"
   fi

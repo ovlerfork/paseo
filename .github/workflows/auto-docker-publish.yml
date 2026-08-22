@@ -164,6 +164,7 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
           RESOLVED_VERSION: ${{ steps.meta.outputs.version }}
           PUBLISH_MODE: ${{ steps.meta.outputs.publish_mode }}
+          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}
           UPSTREAM_SHA: ${{ steps.meta.outputs.upstream_sha }}
         run: |
           set -euo pipefail
@@ -177,7 +178,7 @@ jobs:
 
           existing_tags="$(docker_publish_existing_tags "${package_path}")"
 
-          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${UPSTREAM_SHA}")
+          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}")
           default_immutable_tag="${immutable_tags[0]}"
           ubuntu_immutable_tag="${immutable_tags[1]}"
           default_tag_exists=false
