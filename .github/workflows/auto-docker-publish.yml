@@ -82,19 +82,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            publish_mode="${INPUT_PUBLISH_MODE}"
+          elif [[ "${EVENT_NAME}" == "schedule" ]]; then
+            publish_mode=prerelease
+          else
+            publish_mode=dev
+          fi
+
           if [[ -n "${INPUT_UPSTREAM_REF}" ]]; then
             upstream_ref="${INPUT_UPSTREAM_REF}"
-          elif [[ "${EVENT_NAME}" == "schedule" || "${INPUT_PUBLISH_MODE}" == "prerelease" ]]; then
-            upstream_ref="$(gh api 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')"
-            if [[ -z "${upstream_ref}" || "${upstream_ref}" == "null" ]]; then
-              echo "No published upstream prerelease was found." >&2
-              exit 1
-            fi
+          elif [[ "${publish_mode}" == "dev" ]]; then
+            upstream_ref=main
+          elif [[ "${publish_mode}" == "prerelease" ]]; then
+            upstream_ref="$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')"
           else
-            upstream_ref="main"
+            upstream_ref="$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')"
+          fi
+          if [[ -z "${upstream_ref}" || "${upstream_ref}" == "null" ]]; then
+            echo "No published upstream ${publish_mode} release was found." >&2
+            exit 1
           fi
           echo "ref=${upstream_ref}" >> "$GITHUB_OUTPUT"
-          echo "Resolved upstream ref: ${upstream_ref}"
+          echo "publish_mode=${publish_mode}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${upstream_ref} (${publish_mode})"
 
       - name: Checkout upstream source
         uses: actions/checkout@v4
@@ -157,8 +168,7 @@ jobs:
         working-directory: source
         env:
           INPUT_PASEO_VERSION: ${{ inputs.paseo_version }}
-          EVENT_NAME: ${{ github.event_name }}
-          PUBLISH_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode || 'release' }}
+          PUBLISH_MODE: ${{ steps.upstream_ref.outputs.publish_mode }}
           REPO_OWNER: ${{ github.repository_owner }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
           SOURCE_SHA: ${{ steps.source_identity.outputs.sha }}
@@ -168,9 +178,6 @@ jobs:
             version="${INPUT_PASEO_VERSION}"
           else
             version="$(node -p "require('./package.json').version")"
-          fi
-          if [[ "${EVENT_NAME}" != "workflow_dispatch" && "${version}" == *-* ]]; then
-            PUBLISH_MODE=prerelease
           fi
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
