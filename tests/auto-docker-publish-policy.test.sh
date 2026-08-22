@@ -26,22 +26,45 @@ assert_equals $'ghcr.io/example/paseo:dev\nghcr.io/example/paseo:dev-0123456789a
 assert_equals $'ghcr.io/example/paseo:dev-ubuntu-sandbox\nghcr.io/example/paseo:dev-0123456789abcdef0123456789abcdef01234567-ubuntu-sandbox' \
   "$(docker_publish_source_tags "${IMAGE_BASE}" dev ubuntu-sandbox "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" ubuntu-sandbox)" \
   "dev Ubuntu tags"
+assert_equals $'ghcr.io/example/paseo:prerelease\nghcr.io/example/paseo:prerelease-a1b2c3d\nghcr.io/example/paseo:1.2.3\nghcr.io/example/paseo:1.2.3-a1b2c3d' \
+  "$(docker_publish_source_tags "${IMAGE_BASE}" prerelease latest "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" '')" \
+  "prerelease default tags retain the pre-sanitization source SHA without latest"
+assert_equals $'ghcr.io/example/paseo:prerelease-ubuntu-sandbox\nghcr.io/example/paseo:prerelease-a1b2c3d-ubuntu-sandbox\nghcr.io/example/paseo:1.2.3-ubuntu-sandbox\nghcr.io/example/paseo:1.2.3-a1b2c3d-ubuntu-sandbox' \
+  "$(docker_publish_source_tags "${IMAGE_BASE}" prerelease ubuntu-sandbox "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" ubuntu-sandbox)" \
+  "prerelease Ubuntu tags retain the pre-sanitization source SHA without the moving sandbox tag"
 assert_equals $'ghcr.io/example/paseo:1.2.3\nghcr.io/example/paseo:1.2.3-a1b2c3d\nghcr.io/example/paseo:latest' \
   "$(docker_publish_source_tags "${IMAGE_BASE}" release latest "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" '')" \
   "release default tags retain the pre-sanitization source SHA"
 assert_equals $'ghcr.io/example/paseo:1.2.3-ubuntu-sandbox\nghcr.io/example/paseo:1.2.3-a1b2c3d-ubuntu-sandbox\nghcr.io/example/paseo:ubuntu-sandbox' \
   "$(docker_publish_source_tags "${IMAGE_BASE}" release ubuntu-sandbox "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" ubuntu-sandbox)" \
   "release Ubuntu tags"
-assert_equals false "$(docker_publish_source_images_needed true true)" "both immutable tags skip"
 assert_equals true "$(docker_publish_source_images_needed true false)" "missing Ubuntu immutable tag publishes"
 assert_equals true "$(docker_publish_source_images_needed false true)" "missing default immutable tag publishes"
 assert_equals true "$(docker_publish_source_images_needed false false)" "absent package publishes"
 assert_equals $'dev-0123456789abcdef0123456789abcdef01234567\ndev-0123456789abcdef0123456789abcdef01234567-ubuntu-sandbox' \
-  "$(docker_publish_immutable_tags dev "${VERSION}" "${UPSTREAM_SHA}")" \
+  "$(docker_publish_immutable_tags dev "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}")" \
   "development immutable tags use the full upstream SHA"
+assert_equals $'prerelease-a1b2c3d\nprerelease-a1b2c3d-ubuntu-sandbox' \
+  "$(docker_publish_immutable_tags prerelease "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}")" \
+  "prerelease immutable tags use the source identity"
 assert_equals $'1.2.3\n1.2.3-ubuntu-sandbox' \
-  "$(docker_publish_immutable_tags release "${VERSION}" "${UPSTREAM_SHA}")" \
+  "$(docker_publish_immutable_tags release "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}")" \
   "release immutable tags use the release version"
+
+mapfile -t prerelease_immutable_tags < <(docker_publish_immutable_tags prerelease "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}")
+existing_version_tags=$'1.2.3\n1.2.3-ubuntu-sandbox'
+prerelease_default_tag_exists=false
+prerelease_ubuntu_tag_exists=false
+if grep -Fxq "${prerelease_immutable_tags[0]}" <<<"${existing_version_tags}"; then
+  prerelease_default_tag_exists=true
+fi
+if grep -Fxq "${prerelease_immutable_tags[1]}" <<<"${existing_version_tags}"; then
+  prerelease_ubuntu_tag_exists=true
+fi
+assert_equals true "$(docker_publish_source_images_needed "${prerelease_default_tag_exists}" "${prerelease_ubuntu_tag_exists}")" \
+  "prerelease version tags without source tags publish"
+assert_equals false "$(docker_publish_source_images_needed true true)" \
+  "present prerelease source tags skip"
 
 fake_bin="$(mktemp -d)"
 trap 'rm -rf "${fake_bin}"' EXIT
