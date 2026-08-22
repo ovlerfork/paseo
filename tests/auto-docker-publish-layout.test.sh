@@ -39,7 +39,8 @@ assert_prepare_contains "          ref: \${{ github.event_name == 'workflow_disp
 assert_prepare_contains '        id: source_identity'
 assert_prepare_contains '      - name: Sanitize generated branch'
 assert_prepare_contains "        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.publish_mode == 'dev' || inputs.publish_mode == 'prerelease'))"
-assert_prepare_contains '          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${UPSTREAM_SHA}")'
+assert_prepare_contains '          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}'
+assert_prepare_contains '          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}")'
 if ! grep -Fxq '          - prerelease' "${workflow_file}"; then
   printf 'workflow dispatch must expose prerelease publish mode\n' >&2
   exit 1
