@@ -95,9 +95,9 @@ jobs:
           elif [[ "${publish_mode}" == "dev" ]]; then
             upstream_ref=main
           elif [[ "${publish_mode}" == "prerelease" ]]; then
-            upstream_ref="$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')"
+            upstream_ref="$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')"
           else
-            upstream_ref="$(gh api --paginate --slurp 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')"
+            upstream_ref="$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')"
           fi
           if [[ -z "${upstream_ref}" || "${upstream_ref}" == "null" ]]; then
             echo "No published upstream ${publish_mode} release was found." >&2
