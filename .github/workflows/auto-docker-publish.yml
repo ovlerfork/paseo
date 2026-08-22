@@ -11,7 +11,7 @@ on:
       upstream_ref:
         description: "Upstream ref to build from"
         required: false
-        default: "main"
+        default: ""
       paseo_version:
         description: "Paseo version to build. Must match the patched source package.json version."
         required: false
@@ -73,11 +73,34 @@ jobs:
         working-directory: patchset
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve upstream source ref
+        id: upstream_ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PUBLISH_MODE: ${{ inputs.publish_mode }}
+          INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_UPSTREAM_REF}" ]]; then
+            upstream_ref="${INPUT_UPSTREAM_REF}"
+          elif [[ "${EVENT_NAME}" == "schedule" || "${INPUT_PUBLISH_MODE}" == "prerelease" ]]; then
+            upstream_ref="$(gh api 'repos/getpaseo/paseo/releases?per_page=100' --jq '[.[] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')"
+            if [[ -z "${upstream_ref}" || "${upstream_ref}" == "null" ]]; then
+              echo "No published upstream prerelease was found." >&2
+              exit 1
+            fi
+          else
+            upstream_ref="main"
+          fi
+          echo "ref=${upstream_ref}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${upstream_ref}"
+
       - name: Checkout upstream source
         uses: actions/checkout@v4
         with:
           repository: getpaseo/paseo
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || 'main' }}
+          ref: ${{ steps.upstream_ref.outputs.ref }}
           path: source
           fetch-depth: 0
 
@@ -134,6 +157,7 @@ jobs:
         working-directory: source
         env:
           INPUT_PASEO_VERSION: ${{ inputs.paseo_version }}
+          EVENT_NAME: ${{ github.event_name }}
           PUBLISH_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_mode || 'release' }}
           REPO_OWNER: ${{ github.repository_owner }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
@@ -144,6 +168,9 @@ jobs:
             version="${INPUT_PASEO_VERSION}"
           else
             version="$(node -p "require('./package.json').version")"
+          fi
+          if [[ "${EVENT_NAME}" != "workflow_dispatch" && "${version}" == *-* ]]; then
+            PUBLISH_MODE=prerelease
           fi
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
@@ -158,7 +185,7 @@ jobs:
 
       - name: Check source image status
         id: source_image_status
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.publish_mode == 'dev' || inputs.publish_mode == 'prerelease'))
+        if: steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
