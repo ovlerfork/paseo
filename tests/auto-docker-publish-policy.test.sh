@@ -26,6 +26,12 @@ assert_equals $'ghcr.io/example/paseo:dev\nghcr.io/example/paseo:dev-0123456789a
 assert_equals $'ghcr.io/example/paseo:dev-ubuntu-sandbox\nghcr.io/example/paseo:dev-0123456789abcdef0123456789abcdef01234567-ubuntu-sandbox' \
   "$(docker_publish_source_tags "${IMAGE_BASE}" dev ubuntu-sandbox "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" ubuntu-sandbox)" \
   "dev Ubuntu tags"
+assert_equals $'ghcr.io/example/paseo:prerelease\nghcr.io/example/paseo:prerelease-a1b2c3d\nghcr.io/example/paseo:1.2.3\nghcr.io/example/paseo:1.2.3-a1b2c3d' \
+  "$(docker_publish_source_tags "${IMAGE_BASE}" prerelease latest "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" '')" \
+  "prerelease default tags retain the pre-sanitization source SHA without latest"
+assert_equals $'ghcr.io/example/paseo:prerelease-ubuntu-sandbox\nghcr.io/example/paseo:prerelease-a1b2c3d-ubuntu-sandbox\nghcr.io/example/paseo:1.2.3-ubuntu-sandbox\nghcr.io/example/paseo:1.2.3-a1b2c3d-ubuntu-sandbox' \
+  "$(docker_publish_source_tags "${IMAGE_BASE}" prerelease ubuntu-sandbox "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" ubuntu-sandbox)" \
+  "prerelease Ubuntu tags retain the pre-sanitization source SHA without the moving sandbox tag"
 assert_equals $'ghcr.io/example/paseo:1.2.3\nghcr.io/example/paseo:1.2.3-a1b2c3d\nghcr.io/example/paseo:latest' \
   "$(docker_publish_source_tags "${IMAGE_BASE}" release latest "${VERSION}" "${PRE_SANITIZATION_SHA}" "${UPSTREAM_SHA}" '')" \
   "release default tags retain the pre-sanitization source SHA"
@@ -39,6 +45,9 @@ assert_equals true "$(docker_publish_source_images_needed false false)" "absent 
 assert_equals $'dev-0123456789abcdef0123456789abcdef01234567\ndev-0123456789abcdef0123456789abcdef01234567-ubuntu-sandbox' \
   "$(docker_publish_immutable_tags dev "${VERSION}" "${UPSTREAM_SHA}")" \
   "development immutable tags use the full upstream SHA"
+assert_equals $'1.2.3\n1.2.3-ubuntu-sandbox' \
+  "$(docker_publish_immutable_tags prerelease "${VERSION}" "${UPSTREAM_SHA}")" \
+  "prerelease immutable tags use the release version"
 assert_equals $'1.2.3\n1.2.3-ubuntu-sandbox' \
   "$(docker_publish_immutable_tags release "${VERSION}" "${UPSTREAM_SHA}")" \
   "release immutable tags use the release version"

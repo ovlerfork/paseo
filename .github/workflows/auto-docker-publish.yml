@@ -23,6 +23,7 @@ on:
         type: choice
         options:
           - release
+          - prerelease
           - dev
       patchset_ref:
         description: "Exact patchset commit to use for development publishing"
@@ -157,7 +158,7 @@ jobs:
 
       - name: Check source image status
         id: source_image_status
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_mode == 'dev')
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.publish_mode == 'dev' || inputs.publish_mode == 'prerelease'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
