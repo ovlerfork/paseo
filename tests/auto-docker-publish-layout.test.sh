@@ -59,14 +59,36 @@ if ! grep -Fqx '        default: ""' "${workflow_file}"; then
   printf 'workflow dispatch must allow prerelease resolution without an upstream ref\n' >&2
   exit 1
 fi
-if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.prerelease and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
-  printf 'workflow must resolve the latest published upstream prerelease dynamically\n' >&2
+if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.draft | not)] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
+  printf 'workflow must resolve the latest published upstream release or prerelease dynamically\n' >&2
   exit 1
 fi
 if ! grep -Fqx "            upstream_ref=\"\$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')\"" "${workflow_file}"; then
   printf 'workflow must resolve the latest published upstream stable release dynamically\n' >&2
   exit 1
 fi
+
+newer_prerelease_pages='[{"tag_name":"v0.5.0","prerelease":false,"draft":false,"published_at":"2026-08-01T00:00:00Z"},{"tag_name":"v0.6.0-beta.1","prerelease":true,"draft":false,"published_at":"2026-08-02T00:00:00Z"}]'
+release_pages='[{"tag_name":"v0.5.0","prerelease":false,"draft":false,"published_at":"2026-08-01T00:00:00Z"},{"tag_name":"v0.6.0-beta.1","prerelease":true,"draft":false,"published_at":"2026-08-02T00:00:00Z"},{"tag_name":"v0.6.0","prerelease":false,"draft":false,"published_at":"2026-08-03T00:00:00Z"},{"tag_name":"v0.7.0-beta.1","prerelease":true,"draft":true,"published_at":"2026-08-04T00:00:00Z"}]'
+assert_equals() {
+  local expected="$1"
+  local actual="$2"
+  local name="$3"
+  if [[ "${actual}" != "${expected}" ]]; then
+    printf '%s failed: expected %s, got %s\n' "${name}" "${expected}" "${actual}" >&2
+    exit 1
+  fi
+}
+
+assert_equals v0.6.0-beta.1 \
+  "$(printf '%s\n' "${newer_prerelease_pages}" | jq --slurp -r '[.[][] | select(.draft | not)] | max_by(.published_at).tag_name')" \
+  "prerelease source selects a newer prerelease over an older stable release"
+assert_equals v0.6.0 \
+  "$(printf '%s\n' "${release_pages}" | jq --slurp -r '[.[][] | select(.draft | not)] | max_by(.published_at).tag_name')" \
+  "prerelease source selects a newer stable release over an older prerelease"
+assert_equals v0.6.0 \
+  "$(printf '%s\n' "${release_pages}" | jq --slurp -r '[.[][] | select((.prerelease | not) and (.draft | not))] | max_by(.published_at).tag_name')" \
+  "release source selects the newest non-draft stable release"
 if grep -Fq 'gh api --paginate --slurp' "${workflow_file}"; then
   printf 'workflow must not combine unsupported gh api --paginate --slurp flags\n' >&2
   exit 1
