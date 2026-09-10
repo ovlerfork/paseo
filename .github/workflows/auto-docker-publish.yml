@@ -338,6 +338,8 @@ jobs:
             npm_package: "opencode-ai"
           - agent: pi
             npm_package: "@earendil-works/pi-coding-agent"
+          - agent: omp
+            npm_package: "@oh-my-pi/pi-coding-agent"
     steps:
       - name: Checkout patched source
         uses: actions/checkout@v4
