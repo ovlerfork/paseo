@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v amp-acp >/dev/null 2>&1; then
+  echo "[mod:amp-acp] amp-acp already on PATH; skipping install."
+  exit 0
+fi
+
+# amp-acp is only the ACP adapter. It drives the Amp CLI at runtime, so install
+# the Amp CLI first when it is missing or its launcher cannot run.
+if [[ -z "$(amp --version 2>/dev/null || true)" ]]; then
+  echo "[mod:amp-acp] installing @ampcode/cli with pnpm"
+  # The Amp CLI postinstall promotes the matching platform binary, so allow it
+  # even though pnpm skips dependency build scripts by default.
+  paseo-mod-install node --allow-build=@ampcode/cli @ampcode/cli
+fi
+
+package="amp-acp"
+version_file="/etc/paseo-mods/amp-acp/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:amp-acp] installing ${package} with pnpm"
+paseo-mod-install node "${package}"
+
+AMP_ACP_BIN="$(command -v amp-acp)" || {
+  echo "[mod:amp-acp] ERROR: ${package} did not install an 'amp-acp' binary on PATH." >&2
+  exit 1
+}
+AMP_BIN="$(command -v amp)" || {
+  echo "[mod:amp-acp] ERROR: the Amp CLI is not on PATH after install." >&2
+  exit 1
+}
+echo "[mod:amp-acp] done (${AMP_ACP_BIN}, ${AMP_BIN})"
