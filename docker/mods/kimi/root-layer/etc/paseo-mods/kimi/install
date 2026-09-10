@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v kimi >/dev/null 2>&1; then
+  echo "[mod:kimi] kimi already on PATH; skipping install."
+  exit 0
+fi
+
+package="@moonshot-ai/kimi-code"
+version_file="/etc/paseo-mods/kimi/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:kimi] installing ${package} with pnpm"
+# The package postinstall prepares native assets, so allow it even though pnpm
+# skips dependency build scripts by default.
+paseo-mod-install node --allow-build=@moonshot-ai/kimi-code "${package}"
+
+KIMI_BIN="$(command -v kimi)" || {
+  echo "[mod:kimi] ERROR: ${package} did not install a 'kimi' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:kimi] done (${KIMI_BIN})"
