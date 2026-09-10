@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v kilo >/dev/null 2>&1; then
+  echo "[mod:kilo] kilo already on PATH; skipping install."
+  exit 0
+fi
+
+package="@kilocode/cli"
+version_file="/etc/paseo-mods/kilo/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:kilo] installing ${package} with pnpm"
+# The package postinstall promotes the matching platform binary, so allow it
+# even though pnpm skips dependency build scripts by default.
+paseo-mod-install node --allow-build=@kilocode/cli "${package}"
+
+KILO_BIN="$(command -v kilo)" || {
+  echo "[mod:kilo] ERROR: ${package} did not install a 'kilo' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:kilo] done (${KILO_BIN})"
