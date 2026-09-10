@@ -1,0 +1,437 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Thu, 10 Sep 2026 22:33:56 +0000
+Subject: [PATCH] fix(docker): add ACP provider catalog mods
+
+
+diff --git a/docker/mods/amp-acp/Dockerfile b/docker/mods/amp-acp/Dockerfile
+new file mode 100644
+index 0000000..d4e67c5
+--- /dev/null
++++ b/docker/mods/amp-acp/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=amp-acp
++ARG PASEO_MOD_PACKAGE=amp-acp
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=amp-acp
++ARG PASEO_MOD_PACKAGE=amp-acp
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install b/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install
+new file mode 100755
+index 0000000..0c46d7c
+--- /dev/null
++++ b/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v amp-acp >/dev/null 2>&1; then
++  echo "[mod:amp-acp] amp-acp already on PATH; skipping install."
++  exit 0
++fi
++
++# amp-acp is only the ACP adapter. It drives the Amp CLI at runtime, so install
++# the Amp CLI first when it is missing or its launcher cannot run.
++if [[ -z "$(amp --version 2>/dev/null || true)" ]]; then
++  echo "[mod:amp-acp] installing @ampcode/cli with pnpm"
++  # The Amp CLI postinstall promotes the matching platform binary, so allow it
++  # even though pnpm skips dependency build scripts by default.
++  paseo-mod-install node --allow-build=@ampcode/cli @ampcode/cli
++fi
++
++package="amp-acp"
++version_file="/etc/paseo-mods/amp-acp/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:amp-acp] installing ${package} with pnpm"
++paseo-mod-install node "${package}"
++
++AMP_ACP_BIN="$(command -v amp-acp)" || {
++  echo "[mod:amp-acp] ERROR: ${package} did not install an 'amp-acp' binary on PATH." >&2
++  exit 1
++}
++AMP_BIN="$(command -v amp)" || {
++  echo "[mod:amp-acp] ERROR: the Amp CLI is not on PATH after install." >&2
++  exit 1
++}
++echo "[mod:amp-acp] done (${AMP_ACP_BIN}, ${AMP_BIN})"
+diff --git a/docker/mods/codebuddy/Dockerfile b/docker/mods/codebuddy/Dockerfile
+new file mode 100644
+index 0000000..0c7ce81
+--- /dev/null
++++ b/docker/mods/codebuddy/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=codebuddy
++ARG PASEO_MOD_PACKAGE=@tencent-ai/codebuddy-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=codebuddy
++ARG PASEO_MOD_PACKAGE=@tencent-ai/codebuddy-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install b/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install
+new file mode 100755
+index 0000000..f309a48
+--- /dev/null
++++ b/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v codebuddy >/dev/null 2>&1; then
++  echo "[mod:codebuddy] codebuddy already on PATH; skipping install."
++  exit 0
++fi
++
++package="@tencent-ai/codebuddy-code"
++version_file="/etc/paseo-mods/codebuddy/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:codebuddy] installing ${package} with pnpm"
++paseo-mod-install node "${package}"
++
++CODEBUDDY_BIN="$(command -v codebuddy)" || {
++  echo "[mod:codebuddy] ERROR: ${package} did not install a 'codebuddy' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:codebuddy] done (${CODEBUDDY_BIN})"
+diff --git a/docker/mods/codewhale/Dockerfile b/docker/mods/codewhale/Dockerfile
+new file mode 100644
+index 0000000..1542e1c
+--- /dev/null
++++ b/docker/mods/codewhale/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=codewhale
++ARG PASEO_MOD_PACKAGE=codewhale
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=codewhale
++ARG PASEO_MOD_PACKAGE=codewhale
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install b/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install
+new file mode 100755
+index 0000000..60d3a7a
+--- /dev/null
++++ b/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v codewhale >/dev/null 2>&1; then
++  echo "[mod:codewhale] codewhale already on PATH; skipping install."
++  exit 0
++fi
++
++package="codewhale"
++version_file="/etc/paseo-mods/codewhale/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:codewhale] installing ${package} with pnpm"
++# The package postinstall installs its runtime launcher, so allow it even
++# though pnpm skips dependency build scripts by default. The launcher fetches
++# the platform binary on first use.
++paseo-mod-install node --allow-build=codewhale "${package}"
++
++CODEWHALE_BIN="$(command -v codewhale)" || {
++  echo "[mod:codewhale] ERROR: ${package} did not install a 'codewhale' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:codewhale] done (${CODEWHALE_BIN})"
+diff --git a/docker/mods/junie/Dockerfile b/docker/mods/junie/Dockerfile
+new file mode 100644
+index 0000000..84b8769
+--- /dev/null
++++ b/docker/mods/junie/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=junie
++ARG PASEO_MOD_PACKAGE=@jetbrains/junie
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=junie
++ARG PASEO_MOD_PACKAGE=@jetbrains/junie
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/junie/root-layer/etc/paseo-mods/junie/install b/docker/mods/junie/root-layer/etc/paseo-mods/junie/install
+new file mode 100755
+index 0000000..d2df8dd
+--- /dev/null
++++ b/docker/mods/junie/root-layer/etc/paseo-mods/junie/install
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v junie >/dev/null 2>&1; then
++  echo "[mod:junie] junie already on PATH; skipping install."
++  exit 0
++fi
++
++package="@jetbrains/junie"
++version_file="/etc/paseo-mods/junie/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:junie] installing ${package} with pnpm"
++# The package postinstall fetches the JetBrains CLI payload, so allow it even
++# though pnpm skips dependency build scripts by default.
++paseo-mod-install node --allow-build=@jetbrains/junie "${package}"
++
++JUNIE_BIN="$(command -v junie)" || {
++  echo "[mod:junie] ERROR: ${package} did not install a 'junie' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:junie] done (${JUNIE_BIN})"
+diff --git a/docker/mods/kilo/Dockerfile b/docker/mods/kilo/Dockerfile
+new file mode 100644
+index 0000000..941112b
+--- /dev/null
++++ b/docker/mods/kilo/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=kilo
++ARG PASEO_MOD_PACKAGE=@kilocode/cli
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=kilo
++ARG PASEO_MOD_PACKAGE=@kilocode/cli
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install b/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install
+new file mode 100755
+index 0000000..c88e5df
+--- /dev/null
++++ b/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v kilo >/dev/null 2>&1; then
++  echo "[mod:kilo] kilo already on PATH; skipping install."
++  exit 0
++fi
++
++package="@kilocode/cli"
++version_file="/etc/paseo-mods/kilo/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:kilo] installing ${package} with pnpm"
++# The package postinstall promotes the matching platform binary, so allow it
++# even though pnpm skips dependency build scripts by default.
++paseo-mod-install node --allow-build=@kilocode/cli "${package}"
++
++KILO_BIN="$(command -v kilo)" || {
++  echo "[mod:kilo] ERROR: ${package} did not install a 'kilo' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:kilo] done (${KILO_BIN})"
+diff --git a/docker/mods/kimi/Dockerfile b/docker/mods/kimi/Dockerfile
+new file mode 100644
+index 0000000..b371656
+--- /dev/null
++++ b/docker/mods/kimi/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=kimi
++ARG PASEO_MOD_PACKAGE=@moonshot-ai/kimi-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=kimi
++ARG PASEO_MOD_PACKAGE=@moonshot-ai/kimi-code
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install b/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install
+new file mode 100755
+index 0000000..9b29239
+--- /dev/null
++++ b/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v kimi >/dev/null 2>&1; then
++  echo "[mod:kimi] kimi already on PATH; skipping install."
++  exit 0
++fi
++
++package="@moonshot-ai/kimi-code"
++version_file="/etc/paseo-mods/kimi/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:kimi] installing ${package} with pnpm"
++# The package postinstall prepares native assets, so allow it even though pnpm
++# skips dependency build scripts by default.
++paseo-mod-install node --allow-build=@moonshot-ai/kimi-code "${package}"
++
++KIMI_BIN="$(command -v kimi)" || {
++  echo "[mod:kimi] ERROR: ${package} did not install a 'kimi' binary on PATH." >&2
++  exit 1
++}
++echo "[mod:kimi] done (${KIMI_BIN})"
+diff --git a/docs/docker.md b/docs/docker.md
+index cf64543..e20bc2a 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -136,7 +136,7 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
+ do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
+ starting the daemon.
+ 
+-Available mod tags:
++Native provider mods:
+ 
+ | Mod tag       | Package                           | Binary     |
+ | ------------- | --------------------------------- | ---------- |
+@@ -147,6 +147,23 @@ Available mod tags:
+ | `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
+ | `omp`         | `@oh-my-pi/pi-coding-agent`       | `omp`      |
+ 
++ACP catalog mods preinstall the CLI that the matching in-app ACP provider
++expects, so selecting that provider in Paseo works without a custom image:
++
++| Mod tag     | Package                      | Binary      |
++| ----------- | ---------------------------- | ----------- |
++| `amp-acp`   | `amp-acp` and `@ampcode/cli` | `amp-acp`   |
++| `codebuddy` | `@tencent-ai/codebuddy-code` | `codebuddy` |
++| `codewhale` | `codewhale`                  | `codewhale` |
++| `junie`     | `@jetbrains/junie`           | `junie`     |
++| `kilo`      | `@kilocode/cli`              | `kilo`      |
++| `kimi`      | `@moonshot-ai/kimi-code`     | `kimi`      |
++
++Other ACP catalog entries launch through `npx -y <package>@<version>` or `uvx`,
++and the base image already ships Node, pnpm, and uv, so they need no mod.
++`amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
++user still has to run `amp login` inside the container.
++
+ Node-based mod hooks install global packages with `pnpm` first and fall back to
+ `npm` only when `pnpm` is unavailable. Python-based mod hooks should use
+ `paseo-mod-install python <package>`, which prefers `uv tool install` and falls

@@ -338,6 +338,20 @@ jobs:
             npm_package: "opencode-ai"
           - agent: pi
             npm_package: "@earendil-works/pi-coding-agent"
+          - agent: omp
+            npm_package: "@oh-my-pi/pi-coding-agent"
+          - agent: amp-acp
+            npm_package: "amp-acp"
+          - agent: codebuddy
+            npm_package: "@tencent-ai/codebuddy-code"
+          - agent: codewhale
+            npm_package: "codewhale"
+          - agent: junie
+            npm_package: "@jetbrains/junie"
+          - agent: kilo
+            npm_package: "@kilocode/cli"
+          - agent: kimi
+            npm_package: "@moonshot-ai/kimi-code"
     steps:
       - name: Checkout patched source
         uses: actions/checkout@v4
