@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v codebuddy >/dev/null 2>&1; then
+  echo "[mod:codebuddy] codebuddy already on PATH; skipping install."
+  exit 0
+fi
+
+package="@tencent-ai/codebuddy-code"
+version_file="/etc/paseo-mods/codebuddy/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:codebuddy] installing ${package} with pnpm"
+paseo-mod-install node "${package}"
+
+CODEBUDDY_BIN="$(command -v codebuddy)" || {
+  echo "[mod:codebuddy] ERROR: ${package} did not install a 'codebuddy' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:codebuddy] done (${CODEBUDDY_BIN})"
