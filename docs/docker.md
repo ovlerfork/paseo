@@ -113,9 +113,9 @@ requires a key.
 
 ## Installing Agents
 
-The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
-other agent CLIs. That keeps the default image small and avoids coupling Paseo
-releases to third-party agent release cycles.
+The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi,
+omp, or other agent CLIs. That keeps the default image small and avoids coupling
+Paseo releases to third-party agent release cycles.
 
 Use Docker Mods to install agent CLIs at container startup:
 
@@ -145,11 +145,16 @@ Available mod tags:
 | `copilot`     | `@github/copilot`                 | `copilot`  |
 | `opencode`    | `opencode-ai`                     | `opencode` |
 | `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
+| `omp`         | `@oh-my-pi/pi-coding-agent`       | `omp`      |
 
 Node-based mod hooks install global packages with `pnpm` first and fall back to
 `npm` only when `pnpm` is unavailable. Python-based mod hooks should use
 `paseo-mod-install python <package>`, which prefers `uv tool install` and falls
 back to `pipx`.
+
+The `omp` mod also installs the Bun runtime with
+`pnpm add -g --allow-build=bun bun`, because `@oh-my-pi/pi-coding-agent` ships
+as a Bun bundle.
 
 Codex is intentionally installed through the `codex` mod instead of baked into
 the base image, so a newly created container can pick up the current
