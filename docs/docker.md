@@ -136,7 +136,7 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
 do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
 starting the daemon.
 
-Available mod tags:
+Native provider mods:
 
 | Mod tag       | Package                           | Binary     |
 | ------------- | --------------------------------- | ---------- |
@@ -146,6 +146,23 @@ Available mod tags:
 | `opencode`    | `opencode-ai`                     | `opencode` |
 | `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
 | `omp`         | `@oh-my-pi/pi-coding-agent`       | `omp`      |
+
+ACP catalog mods preinstall the CLI that the matching in-app ACP provider
+expects, so selecting that provider in Paseo works without a custom image:
+
+| Mod tag     | Package                      | Binary      |
+| ----------- | ---------------------------- | ----------- |
+| `amp-acp`   | `amp-acp` and `@ampcode/cli` | `amp-acp`   |
+| `codebuddy` | `@tencent-ai/codebuddy-code` | `codebuddy` |
+| `codewhale` | `codewhale`                  | `codewhale` |
+| `junie`     | `@jetbrains/junie`           | `junie`     |
+| `kilo`      | `@kilocode/cli`              | `kilo`      |
+| `kimi`      | `@moonshot-ai/kimi-code`     | `kimi`      |
+
+Other ACP catalog entries launch through `npx -y <package>@<version>` or `uvx`,
+and the base image already ships Node, pnpm, and uv, so they need no mod.
+`amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
+user still has to run `amp login` inside the container.
 
 Node-based mod hooks install global packages with `pnpm` first and fall back to
 `npm` only when `pnpm` is unavailable. Python-based mod hooks should use
