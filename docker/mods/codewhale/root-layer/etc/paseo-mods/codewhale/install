@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v codewhale >/dev/null 2>&1; then
+  echo "[mod:codewhale] codewhale already on PATH; skipping install."
+  exit 0
+fi
+
+package="codewhale"
+version_file="/etc/paseo-mods/codewhale/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:codewhale] installing ${package} with pnpm"
+# The package postinstall installs its runtime launcher, so allow it even
+# though pnpm skips dependency build scripts by default. The launcher fetches
+# the platform binary on first use.
+paseo-mod-install node --allow-build=codewhale "${package}"
+
+CODEWHALE_BIN="$(command -v codewhale)" || {
+  echo "[mod:codewhale] ERROR: ${package} did not install a 'codewhale' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:codewhale] done (${CODEWHALE_BIN})"
