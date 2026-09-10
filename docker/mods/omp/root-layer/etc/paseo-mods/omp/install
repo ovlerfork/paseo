@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v omp >/dev/null 2>&1; then
+  echo "[mod:omp] omp already on PATH; skipping install."
+  exit 0
+fi
+
+ensure_bun() {
+  local min_version="1.3.14" bun_version=""
+  if command -v bun >/dev/null 2>&1; then
+    bun_version="$(bun --version 2>/dev/null || true)"
+  fi
+  if [[ -n "$bun_version" ]] \
+    && printf '%s\n%s\n' "$min_version" "$bun_version" | sort -V -C 2>/dev/null; then
+    echo "[mod:omp] bun ${bun_version} already on PATH."
+    return 0
+  fi
+  if [[ -n "$bun_version" ]]; then
+    echo "[mod:omp] upgrading bun ${bun_version} (omp needs >= ${min_version})."
+  fi
+  echo "[mod:omp] installing the Bun runtime with pnpm"
+  # @oh-my-pi/pi-coding-agent ships as a Bun bundle, and the bun npm package
+  # replaces its placeholder bin with the real runtime in a postinstall script.
+  # pnpm skips dependency build scripts by default, so allow that one script.
+  paseo-mod-install node --allow-build=bun bun
+}
+
+ensure_bun
+
+package="@oh-my-pi/pi-coding-agent"
+version_file="/etc/paseo-mods/omp/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:omp] installing ${package} with pnpm"
+paseo-mod-install node --ignore-scripts "${package}"
+
+OMP_BIN="$(command -v omp)" || {
+  echo "[mod:omp] ERROR: ${package} did not install an 'omp' binary on PATH." >&2
+  exit 1
+}
+
+OMP_VERSION_OUTPUT="$(omp --version 2>&1)" || {
+  echo "[mod:omp] ERROR: 'omp --version' failed after installing ${package}:" >&2
+  echo "${OMP_VERSION_OUTPUT}" >&2
+  exit 1
+}
+echo "[mod:omp] done (${OMP_BIN}, ${OMP_VERSION_OUTPUT})"
