@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v junie >/dev/null 2>&1; then
+  echo "[mod:junie] junie already on PATH; skipping install."
+  exit 0
+fi
+
+package="@jetbrains/junie"
+version_file="/etc/paseo-mods/junie/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:junie] installing ${package} with pnpm"
+# The package postinstall fetches the JetBrains CLI payload, so allow it even
+# though pnpm skips dependency build scripts by default.
+paseo-mod-install node --allow-build=@jetbrains/junie "${package}"
+
+JUNIE_BIN="$(command -v junie)" || {
+  echo "[mod:junie] ERROR: ${package} did not install a 'junie' binary on PATH." >&2
+  exit 1
+}
+echo "[mod:junie] done (${JUNIE_BIN})"
