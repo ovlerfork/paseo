@@ -91,6 +91,23 @@ apply_docker_mods() {
   /usr/local/bin/docker-mods
 }
 
+start_mod_services() {
+  shopt -s nullglob
+
+  local hook runtime_user
+  runtime_user="${PASEO_RUNTIME_USER:-paseo}"
+  for hook in /etc/paseo-mods/*/start; do
+    [[ -f "$hook" ]] || continue
+    chmod +x "$hook" 2>/dev/null || true
+    echo "[mods] starting service hook: ${hook}"
+    if [[ "$(id -u)" == "0" && "$runtime_user" == "paseo" ]]; then
+      gosu paseo bash "$hook" &
+    else
+      bash "$hook" &
+    fi
+  done
+}
+
 start_sshd() {
   case "${PASEO_SSH_ENABLED:-false}" in
     true | 1 | yes) ;;
@@ -132,6 +149,7 @@ start_sshd() {
 }
 
 apply_docker_mods
+start_mod_services
 start_sshd
 
 if [[ "$#" -gt 0 ]]; then
