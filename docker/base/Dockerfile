@@ -222,7 +222,10 @@ RUN set -eux; \
     fi
 
 COPY docker/base/rootfs/ /
-RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install
+RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install; \
+    if [ -f /etc/bash.bashrc ] && ! grep -q "paseo-path.sh" /etc/bash.bashrc; then \
+      printf '\n# Docker Mod binaries live in the pnpm prefix; source the shared\n# PATH helper in interactive shells too.\n. /etc/profile.d/paseo-path.sh\n' >> /etc/bash.bashrc; \
+    fi
 
 WORKDIR /workspace
 
