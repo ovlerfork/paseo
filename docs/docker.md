@@ -136,6 +136,13 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
 do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
 starting the daemon.
 
+Mod images may also carry a `start` hook at `/etc/paseo-mods/<name>/start`. The
+entrypoint runs each start hook in the background on every container start, as
+the runtime user, and never waits for it, so a mod service can come up
+alongside the daemon without blocking it. A start hook should exec a
+long-running process and exit 0 when the service is not configured or not
+wanted; a failing start hook is logged and does not stop the daemon.
+
 Native provider mods:
 
 | Mod tag       | Package                           | Binary     |
@@ -173,15 +180,20 @@ DevSpace installs as a tool mod rather than as an agent provider:
 It serves a self-hosted MCP endpoint that exposes the container workspace to MCP
 clients such as ChatGPT. DevSpace keeps durable settings and auth in
 `~/.devspace`, inside the persistent `/home/paseo` volume, so the owner password
-and client approvals survive container recreation. Initialize it once and run
-the server as the runtime user:
+and client approvals survive container recreation.
+
+The mod ships a start hook, so once DevSpace is initialized the entrypoint
+starts `devspace serve` on every container start as the runtime user. Initialize
+it once:
 
 ```bash
 docker exec -it --user paseo paseo devspace init
-docker exec -it --user paseo paseo devspace serve
 ```
 
-`devspace serve` serves MCP on port `7676` by default. See the
+Auto-start requires `${HOME}/.devspace/auth.json`, written by `devspace init`,
+or `DEVSPACE_OAUTH_OWNER_TOKEN`. Set `DEVSPACE_ENABLED=false` to keep the CLI
+installed without starting the server. `devspace serve` serves MCP on port
+`7676` by default. See the
 [DevSpace documentation](https://github.com/Waishnav/devspace) for how to
 expose it through a tunnel you control and connect an MCP client.
 
