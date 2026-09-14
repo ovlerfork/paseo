@@ -145,6 +145,11 @@ alongside the daemon without blocking it. A start hook should exec a
 long-running process and exit 0 when the service is not configured or not
 wanted; a failing start hook is logged and does not stop the daemon.
 
+Mod binaries install into `/usr/local/share/pnpm/bin`. The image puts that
+prefix on `PATH` for processes started by the entrypoint and for SSH login and
+interactive shells, so mod CLIs resolve in `docker exec`, a Paseo terminal, and
+an SSH session alike.
+
 Native provider mods:
 
 | Mod tag       | Package                           | Binary     |
