@@ -164,6 +164,27 @@ and the base image already ships Node, pnpm, and uv, so they need no mod.
 `amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
 user still has to run `amp login` inside the container.
 
+DevSpace installs as a tool mod rather than as an agent provider:
+
+| Mod tag    | Package              | Binary     |
+| ---------- | -------------------- | ---------- |
+| `devspace` | `@waishnav/devspace` | `devspace` |
+
+It serves a self-hosted MCP endpoint that exposes the container workspace to MCP
+clients such as ChatGPT. DevSpace keeps durable settings and auth in
+`~/.devspace`, inside the persistent `/home/paseo` volume, so the owner password
+and client approvals survive container recreation. Initialize it once and run
+the server as the runtime user:
+
+```bash
+docker exec -it --user paseo paseo devspace init
+docker exec -it --user paseo paseo devspace serve
+```
+
+`devspace serve` serves MCP on port `7676` by default. See the
+[DevSpace documentation](https://github.com/Waishnav/devspace) for how to
+expose it through a tunnel you control and connect an MCP client.
+
 Node-based mod hooks install global packages with `pnpm` first and fall back to
 `npm` only when `pnpm` is unavailable. Python-based mod hooks should use
 `paseo-mod-install python <package>`, which prefers `uv tool install` and falls
