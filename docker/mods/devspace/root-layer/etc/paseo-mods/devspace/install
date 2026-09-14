@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v devspace >/dev/null 2>&1; then
+  echo "[mod:devspace] devspace already on PATH; skipping install."
+  exit 0
+fi
+
+package="@waishnav/devspace"
+version_file="/etc/paseo-mods/devspace/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:devspace] installing ${package} with pnpm"
+# better-sqlite3 backs DevSpace's durable store and promotes its binding in an
+# install script, so allow that build even though pnpm skips dependency scripts
+# by default. node-pty stays unbuilt: it is an optional dependency for
+# interactive PTY sessions, and DevSpace runs without it when no prebuilt
+# binding is available for the platform.
+paseo-mod-install node --allow-build=better-sqlite3 "${package}"
+
+DEVSPACE_BIN="$(command -v devspace)" || {
+  echo "[mod:devspace] ERROR: ${package} did not install a 'devspace' binary on PATH." >&2
+  exit 1
+}
+
+# DevSpace keeps config.jsonc and auth.json in $HOME/.devspace. That home
+# directory is the persistent volume, so create the state directory for the
+# runtime user instead of leaving a root-owned directory behind for it.
+runtime_user="${PASEO_RUNTIME_USER:-paseo}"
+runtime_home="${PASEO_USER_HOME:-/home/paseo}"
+state_dir="${runtime_home}/.devspace"
+install -d -m 700 "$state_dir"
+chown "${runtime_user}:${runtime_user}" "$state_dir" 2>/dev/null || true
+
+echo "[mod:devspace] done (${DEVSPACE_BIN})"
+echo "[mod:devspace] durable state: ${state_dir} (run 'devspace init' as ${runtime_user}, then 'devspace serve')."
