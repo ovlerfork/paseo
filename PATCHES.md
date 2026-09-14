@@ -25,6 +25,7 @@ The current series carries fork-owned source patches again:
 - `0007-fix-docker-set-Codex-agent-thread-cap.patch` makes the Codex Docker Mod ensure the runtime user's `config.toml` has `[agents] max_threads = 64` before the daemon launches Codex app-server sessions.
 - `0008-fix-docker-add-oh-my-pi-omp-Docker-mod.patch` adds an `omp` Docker Mod for Oh My Pi. Because omp ships as a Bun bundle, the hook installs the Bun runtime with `pnpm add -g --allow-build=bun bun` before installing the version-pinned `@oh-my-pi/pi-coding-agent` package.
 - `0009-fix-docker-add-ACP-provider-catalog-mods.patch` adds Docker Mods for the npm-installable ACP catalog agents: `amp-acp` (with the `@ampcode/cli` runtime), `codebuddy`, `codewhale`, `junie`, `kilo`, and `kimi`. Packages whose postinstall promotes a platform binary install with `pnpm --allow-build`. Other ACP catalog entries launch through `npx` or `uvx` and need no mod.
+- `0010-fix-docker-add-devspace-Docker-mod.patch` adds a `devspace` Docker Mod for the `@waishnav/devspace` MCP server. The hook installs the version-pinned package with `pnpm`, allows the `better-sqlite3` binding build, and creates the runtime user's `~/.devspace` state directory so settings and auth persist with the home volume.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Auto Docker Publish` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 

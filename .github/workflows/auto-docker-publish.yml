@@ -352,6 +352,8 @@ jobs:
             npm_package: "@kilocode/cli"
           - agent: kimi
             npm_package: "@moonshot-ai/kimi-code"
+          - agent: devspace
+            npm_package: "@waishnav/devspace"
     steps:
       - name: Checkout patched source
         uses: actions/checkout@v4

@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 14:57:13 +0000
+Subject: [PATCH] fix(docker): add devspace Docker mod
+
+
+diff --git a/docker/mods/devspace/Dockerfile b/docker/mods/devspace/Dockerfile
+new file mode 100644
+index 0000000..7df71e4
+--- /dev/null
++++ b/docker/mods/devspace/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=devspace
++ARG PASEO_MOD_PACKAGE=@waishnav/devspace
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=devspace
++ARG PASEO_MOD_PACKAGE=@waishnav/devspace
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/install b/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/install
+new file mode 100755
+index 0000000..0ddc5e2
+--- /dev/null
++++ b/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/install
+@@ -0,0 +1,41 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v devspace >/dev/null 2>&1; then
++  echo "[mod:devspace] devspace already on PATH; skipping install."
++  exit 0
++fi
++
++package="@waishnav/devspace"
++version_file="/etc/paseo-mods/devspace/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:devspace] installing ${package} with pnpm"
++# better-sqlite3 backs DevSpace's durable store and promotes its binding in an
++# install script, so allow that build even though pnpm skips dependency scripts
++# by default. node-pty stays unbuilt: it is an optional dependency for
++# interactive PTY sessions, and DevSpace runs without it when no prebuilt
++# binding is available for the platform.
++paseo-mod-install node --allow-build=better-sqlite3 "${package}"
++
++DEVSPACE_BIN="$(command -v devspace)" || {
++  echo "[mod:devspace] ERROR: ${package} did not install a 'devspace' binary on PATH." >&2
++  exit 1
++}
++
++# DevSpace keeps config.jsonc and auth.json in $HOME/.devspace. That home
++# directory is the persistent volume, so create the state directory for the
++# runtime user instead of leaving a root-owned directory behind for it.
++runtime_user="${PASEO_RUNTIME_USER:-paseo}"
++runtime_home="${PASEO_USER_HOME:-/home/paseo}"
++state_dir="${runtime_home}/.devspace"
++install -d -m 700 "$state_dir"
++chown "${runtime_user}:${runtime_user}" "$state_dir" 2>/dev/null || true
++
++echo "[mod:devspace] done (${DEVSPACE_BIN})"
++echo "[mod:devspace] durable state: ${state_dir} (run 'devspace init' as ${runtime_user}, then 'devspace serve')."
+diff --git a/docs/docker.md b/docs/docker.md
+index e20bc2a..335433a 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -164,6 +164,27 @@ and the base image already ships Node, pnpm, and uv, so they need no mod.
+ `amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
+ user still has to run `amp login` inside the container.
+ 
++DevSpace installs as a tool mod rather than as an agent provider:
++
++| Mod tag    | Package              | Binary     |
++| ---------- | -------------------- | ---------- |
++| `devspace` | `@waishnav/devspace` | `devspace` |
++
++It serves a self-hosted MCP endpoint that exposes the container workspace to MCP
++clients such as ChatGPT. DevSpace keeps durable settings and auth in
++`~/.devspace`, inside the persistent `/home/paseo` volume, so the owner password
++and client approvals survive container recreation. Initialize it once and run
++the server as the runtime user:
++
++```bash
++docker exec -it --user paseo paseo devspace init
++docker exec -it --user paseo paseo devspace serve
++```
++
++`devspace serve` serves MCP on port `7676` by default. See the
++[DevSpace documentation](https://github.com/Waishnav/devspace) for how to
++expose it through a tunnel you control and connect an MCP client.
++
+ Node-based mod hooks install global packages with `pnpm` first and fall back to
+ `npm` only when `pnpm` is unavailable. Python-based mod hooks should use
+ `paseo-mod-install python <package>`, which prefers `uv tool install` and falls
