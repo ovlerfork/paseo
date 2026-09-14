@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${DEVSPACE_ENABLED:-true}" in
+  true | 1 | yes) ;;
+  false | 0 | no)
+    echo "[mod:devspace] DEVSPACE_ENABLED=false; not starting."
+    exit 0
+    ;;
+  *)
+    echo "[mod:devspace] ERROR: unsupported DEVSPACE_ENABLED=${DEVSPACE_ENABLED}; expected true or false." >&2
+    exit 1
+    ;;
+esac
+
+if ! command -v devspace >/dev/null 2>&1; then
+  echo "[mod:devspace] ERROR: devspace is not on PATH; cannot start." >&2
+  exit 1
+fi
+
+state_dir="${HOME:-/home/paseo}/.devspace"
+if [[ ! -f "${state_dir}/auth.json" && -z "${DEVSPACE_OAUTH_OWNER_TOKEN:-}" ]]; then
+  echo "[mod:devspace] DevSpace is not initialized: ${state_dir}/auth.json is missing and DEVSPACE_OAUTH_OWNER_TOKEN is unset."
+  echo "[mod:devspace] Run 'devspace init' as the runtime user, then restart the container."
+  exit 0
+fi
+
+echo "[mod:devspace] starting devspace serve"
+exec devspace serve
