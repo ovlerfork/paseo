@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 15:50:23 +0000
+Subject: [PATCH] fix(docker): expose mod binaries to SSH shells
+
+
+diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
+index 4062e75..d884887 100644
+--- a/docker/base/Dockerfile
++++ b/docker/base/Dockerfile
+@@ -221,7 +221,10 @@ RUN set -eux; \
+     fi
+ 
+ COPY docker/base/rootfs/ /
+-RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install
++RUN chmod +x /usr/local/bin/paseo-docker-entrypoint /usr/local/bin/docker-mods /usr/local/bin/paseo-mod-install; \
++    if [ -f /etc/bash.bashrc ] && ! grep -q "paseo-path.sh" /etc/bash.bashrc; then \
++      printf '\n# Docker Mod binaries live in the pnpm prefix; source the shared\n# PATH helper in interactive shells too.\n. /etc/profile.d/paseo-path.sh\n' >> /etc/bash.bashrc; \
++    fi
+ 
+ WORKDIR /workspace
+ 
+diff --git a/docker/base/rootfs/etc/profile.d/paseo-path.sh b/docker/base/rootfs/etc/profile.d/paseo-path.sh
+new file mode 100644
+index 0000000..4d2343d
+--- /dev/null
++++ b/docker/base/rootfs/etc/profile.d/paseo-path.sh
+@@ -0,0 +1,10 @@
++# Docker Mod runtimes install into the pnpm bin prefix at container start. The
++# image sets that prefix in PATH for processes started by the entrypoint, but
++# sshd gives login sessions its own default PATH, so add it here as well and
++# make interactive shells source this file (see docker/base/Dockerfile).
++
++case ":${PATH}:" in
++  *:/usr/local/share/pnpm/bin:*) ;;
++  *) PATH="/usr/local/share/pnpm/bin:/usr/local/share/pnpm:${PATH}" ;;
++esac
++export PATH
+diff --git a/docs/docker.md b/docs/docker.md
+index 74c51f1..089616d 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -143,6 +143,11 @@ alongside the daemon without blocking it. A start hook should exec a
+ long-running process and exit 0 when the service is not configured or not
+ wanted; a failing start hook is logged and does not stop the daemon.
+ 
++Mod binaries install into `/usr/local/share/pnpm/bin`. The image puts that
++prefix on `PATH` for processes started by the entrypoint and for SSH login and
++interactive shells, so mod CLIs resolve in `docker exec`, a Paseo terminal, and
++an SSH session alike.
++
+ Native provider mods:
+ 
+ | Mod tag       | Package                           | Binary     |
