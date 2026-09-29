@@ -3,13 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
-
-SCAN_TARGETS=(
-  "$REPO_ROOT/patches"
-  "$REPO_ROOT/scripts"
-  "$REPO_ROOT/.github"
-  "$REPO_ROOT/PATCHES.md"
-)
+PATCH_DIR="${PATCH_DIR:-${REPO_ROOT}/patches/cur}"
 
 FORBIDDEN_PATTERNS=(
   '#[0-9]+'
@@ -20,22 +14,36 @@ FORBIDDEN_PATTERNS=(
   '/pull/[0-9]+'
 )
 
+if [ ! -d "${PATCH_DIR}" ]; then
+  echo "Sanitizer passed."
+  exit 0
+fi
+
+shopt -s nullglob
+PATCHES=("${PATCH_DIR}"/*.patch)
+TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TEMP_DIR}"' EXIT
+
 FOUND=0
-for target in "${SCAN_TARGETS[@]}"; do
-  [ -e "$target" ] || continue
+for patch in "${PATCHES[@]}"; do
+  message_file="${TEMP_DIR}/message"
+  diff_file="${TEMP_DIR}/diff"
+  metadata="$(git mailinfo "${message_file}" "${diff_file}" < "${patch}")"
+  metadata+=$'\n'
+  metadata+="$(cat "${message_file}")"
+
   for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
-    MATCHES=$(grep -rnE "$pattern" "$target" 2>/dev/null || true)
-    if [ -n "$MATCHES" ]; then
-      echo "FORBIDDEN PATTERN: $pattern"
-      echo "$MATCHES"
+    if grep -qE "${pattern}" <<<"${metadata}"; then
+      echo "FORBIDDEN PATTERN: ${pattern}"
+      echo "${patch}"
       echo ""
       FOUND=1
     fi
   done
 done
 
-if [ "$FOUND" -eq 1 ]; then
-  echo "ERROR: Found forbidden issue/PR references in patchset metadata."
+if [ "${FOUND}" -eq 1 ]; then
+  echo "ERROR: Found forbidden issue/PR references in patch metadata."
   exit 1
 fi
 

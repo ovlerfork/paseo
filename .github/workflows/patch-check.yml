@@ -113,6 +113,7 @@ jobs:
           set -euo pipefail
           bash tests/auto-docker-publish-policy.test.sh
           bash tests/auto-docker-publish-layout.test.sh
+          bash tests/check-no-upstream-refs.test.sh
 
       - name: Dispatch development image publish
         if: steps.apply.outputs.status == 'ok' && inputs.publish_dev == true
