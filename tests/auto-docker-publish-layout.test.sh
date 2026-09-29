@@ -172,6 +172,18 @@ for job in build-linux build-windows build-macos build-android build-ios; do
     exit 1
   fi
 done
+macos_job="$(sed -n '/^  build-macos:/,/^  build-android:/p' "${workflow_file}")"
+ios_job="$(sed -n '/^  build-ios:/,/^  publish-release:/p' "${workflow_file}")"
+if ! grep -Fqx '          NODE_OPTIONS: --max-old-space-size=4096' <<<"${macos_job}"; then
+  printf 'macOS desktop build must raise the observed V8 old-space ceiling\n' >&2
+  exit 1
+fi
+if ! grep -Fqx '      - name: Select supported Xcode' <<<"${ios_job}" \
+  || ! grep -Fqx '        run: sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer' <<<"${ios_job}"; then
+  printf 'iOS build must select the Xcode version required by locked React Native\n' >&2
+  exit 1
+fi
+
 assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-android, build-ios]"
 assert_release_contains '          path: release-policy'
 assert_release_contains '        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"'

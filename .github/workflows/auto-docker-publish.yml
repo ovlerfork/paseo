@@ -717,6 +717,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          NODE_OPTIONS: --max-old-space-size=4096
         run: >
           npm run build:desktop -- --publish never --mac --${{ matrix.electron_arch }}
           -c.mac.identity=null
@@ -862,6 +863,9 @@ jobs:
 
       - name: Install JS dependencies
         run: npm ci
+
+      - name: Select supported Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
 
       - name: Build unsigned iOS IPA
         shell: bash
