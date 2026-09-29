@@ -3026,6 +3026,21 @@ export class DaemonClient {
     return { customName: payload.customName };
   }
 
+  async setProjectGroup(
+    projectId: string,
+    groupName: string | null,
+    requestId?: string,
+  ): Promise<{ groupName: string | null }> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.group.set.response">(
+      {
+        requestId,
+        message: { type: "project.group.set.request", projectId, groupName },
+      },
+    );
+    if (!payload.accepted) throw new Error(payload.error ?? "setProjectGroup rejected");
+    return { groupName: payload.groupName };
+  }
+
   async setProjectIcon(
     projectId: string,
     source: ProjectIconSource,
