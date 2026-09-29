@@ -63,6 +63,7 @@ interface SidebarSharedProps {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
+  allProjects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   hasActiveProjectFilter: boolean;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -112,6 +113,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
 
   const {
     projects,
+    allProjects,
     hasProjectsBeforeFilter,
     resolvedProjectFilters,
     workspaceEntriesByKey,
@@ -206,6 +208,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     projectIconTargets,
     pinnedGroups,
     projects,
+    allProjects,
     hasProjectsBeforeFilter,
     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
     workspaceEntriesByKey,
@@ -510,6 +513,7 @@ function MobileSidebar({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -588,6 +592,7 @@ function MobileSidebar({
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
             projects={projects}
+            allProjects={allProjects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
             workspaceEntriesByKey={workspaceEntriesByKey}
@@ -622,6 +627,7 @@ function DesktopSidebar({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -766,6 +772,7 @@ function DesktopSidebar({
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
             projects={projects}
+            allProjects={allProjects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
             workspaceEntriesByKey={workspaceEntriesByKey}
