@@ -34,6 +34,14 @@ on:
         required: false
         default: true
         type: boolean
+      build_scope:
+        description: "Artifacts to build for an unpublished manual verification"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - android
 
 permissions:
   contents: write
@@ -87,8 +95,13 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_BUILD_SCOPE: ${{ inputs.build_scope }}
         run: |
           set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_BUILD_SCOPE}" != "all" && "${INPUT_PUBLISH}" == "true" ]]; then
+            echo "::error::build_scope=${INPUT_BUILD_SCOPE} requires publish=false because published releases require every artifact."
+            exit 1
+          fi
           if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_PUBLISH}" != "true" ]]; then
             echo "value=false" >> "$GITHUB_OUTPUT"
           else
@@ -543,7 +556,9 @@ jobs:
 
   build-linux:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: >
+      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -604,7 +619,9 @@ jobs:
 
   build-windows:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: >
+      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
     runs-on: windows-latest
     permissions:
       contents: read
@@ -663,7 +680,9 @@ jobs:
 
   build-macos:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: >
+      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
     strategy:
       fail-fast: false
       matrix:
@@ -733,7 +752,9 @@ jobs:
 
   build-android:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: >
+      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all' || inputs.build_scope == 'android')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -787,6 +808,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ENABLE_ANDROID_RESOURCE_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_scope == 'android' && needs.prepare.outputs.publish == 'false' }}
         run: |
           set -euo pipefail
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
@@ -795,14 +817,41 @@ jobs:
               exit 1
             fi
           done
+          report_resources() {
+            echo "::group::Android build resources $(date --iso-8601=seconds)"
+            nproc
+            free -h
+            df -h "${GITHUB_WORKSPACE}"
+            ps -eo pid,ppid,rss,comm --sort=-rss | head -n 20 || true
+            echo "::endgroup::"
+          }
           keystore_path="${RUNNER_TEMP}/paseo-release.keystore"
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+          if [[ "${ENABLE_ANDROID_RESOURCE_DIAGNOSTICS}" == "true" ]]; then
+            report_resources
+            (
+              while sleep 60; do
+                report_resources
+              done
+            ) &
+            resource_monitor_pid=$!
+            cleanup_resources() {
+              local status="$1"
+              kill "${resource_monitor_pid}" 2>/dev/null || true
+              wait "${resource_monitor_pid}" 2>/dev/null || true
+              report_resources || true
+              exit "${status}"
+            }
+            trap 'cleanup_resources $?' EXIT
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
+          fi
           npm run build:app-deps
           (
             cd packages/app
             APP_VARIANT=production npx expo prebuild --platform android --clean --non-interactive
             cd android
-            ./gradlew :app:assembleRelease \
+            ./gradlew :app:assembleRelease --max-workers=2 \
               -Pandroid.injected.signing.store.file="${keystore_path}" \
               -Pandroid.injected.signing.store.type=pkcs12 \
               -Pandroid.injected.signing.store.password="${ANDROID_KEYSTORE_PASSWORD}" \
@@ -823,7 +872,9 @@ jobs:
 
   build-ios:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: >
+      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
+      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
     runs-on: macos-14
     permissions:
       contents: read
