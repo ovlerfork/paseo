@@ -1,4 +1,5 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button";
 import {
   View,
   Text,
@@ -151,6 +152,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
+import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -216,6 +218,7 @@ interface SidebarWorkspaceListProps {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
+  allProjects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
   hasActiveProjectFilter: boolean;
@@ -237,6 +240,39 @@ interface SidebarWorkspaceListProps {
   parentGestureRef?: MutableRefObject<GestureType | undefined>;
   dragGestureHostActive?: boolean;
 }
+
+interface ProjectGroupHeaderProps {
+  groupName: string;
+  projectCount: number;
+  onToggle: (groupName: string) => void;
+  onEdit: (groupName: string) => void;
+}
+
+const ProjectGroupHeader = memo(function ProjectGroupHeader({
+  groupName,
+  projectCount,
+  onToggle,
+  onEdit,
+}: ProjectGroupHeaderProps) {
+  const handleToggle = useCallback(() => onToggle(groupName), [groupName, onToggle]);
+  const handleEdit = useCallback(() => onEdit(groupName), [groupName, onEdit]);
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleToggle}
+        style={styles.projectGroupHeader}
+      >
+        <Text style={styles.projectGroupTitle}>{groupName}</Text>
+        <Text style={styles.projectGroupCount}>{projectCount}</Text>
+      </Pressable>
+      <Button variant="ghost" size="xs" onPress={handleEdit}>
+        Edit
+      </Button>
+    </>
+  );
+});
 
 interface ProjectHeaderRowProps {
   project: SidebarProjectEntry;
@@ -1886,6 +1922,7 @@ export function SidebarWorkspaceList({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -1983,6 +2020,7 @@ export function SidebarWorkspaceList({
     ) : (
       <ProjectModeList
         projects={projects}
+        allProjects={allProjects}
         pinnedGroups={pinnedGroups}
         workspaceEntriesByKey={workspaceEntriesByKey}
         projectIconByProjectViewKey={projectIconByProjectViewKey}
@@ -2079,6 +2117,7 @@ function SidebarGroupedModeList({
 
 function ProjectModeList({
   projects,
+  allProjects,
   pinnedGroups,
   workspaceEntriesByKey,
   projectIconByProjectViewKey,
@@ -2120,6 +2159,15 @@ function ProjectModeList({
   onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
 }) {
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
+  const [editingGroupName, setEditingGroupName] = useState<string | null | undefined>(undefined);
+  const groupHostIds = useMemo(
+    () =>
+      Array.from(
+        new Set(allProjects.flatMap((project) => project.hosts.map((host) => host.serverId))),
+      ),
+    [allProjects],
+  );
+  const supportsProjectGroupsByServerId = useHostFeatureMap(groupHostIds, "projectGroups");
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -2394,24 +2442,76 @@ function ProjectModeList({
     ],
   );
 
+  const groupedProjects = useMemo(() => {
+    const groups = new Map<string, SidebarProjectEntry[]>();
+    const ungrouped: SidebarProjectEntry[] = [];
+    for (const project of unpinnedProjects) {
+      if (!project.groupName) ungrouped.push(project);
+      else {
+        const entries = groups.get(project.groupName) ?? [];
+        entries.push(project);
+        groups.set(project.groupName, entries);
+      }
+    }
+    return { groups, ungrouped };
+  }, [unpinnedProjects]);
+  const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
+  const toggleGroup = useCallback((groupName: string) => {
+    setCollapsedGroupNames((current) => {
+      const next = new Set(current);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
+  }, []);
+  const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
+  const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
+  const editProjectGroup = useCallback((groupName: string) => setEditingGroupName(groupName), []);
   const projectBody =
     projects.length === 0 ? (
       <SidebarProjectEmptyState onAddProject={onAddProject} onImportSession={onImportSession} />
     ) : (
-      <DraggableList
-        testID="sidebar-project-list"
-        data={unpinnedProjects}
-        keyExtractor={projectViewKeyExtractor}
-        renderItem={renderProject}
-        onDragEnd={handleProjectDragEnd}
-        extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
-        scrollEnabled={false}
-        useDragHandle
-        nestable={platformIsNative}
-        simultaneousGestureRef={parentGestureRef}
-        gestureHostPresented={dragGestureHostActive}
-        containerStyle={styles.projectListContainer}
-      />
+      <>
+        {groupHostIds.some((serverId) => supportsProjectGroupsByServerId.get(serverId) === true) ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={openNewProjectGroup}
+            testID="sidebar-create-project-group"
+          >
+            New group
+          </Button>
+        ) : null}
+        {Array.from(groupedProjects.groups.entries()).map(([groupName, groupProjects]) => (
+          <View key={groupName} style={styles.projectGroupBlock}>
+            <ProjectGroupHeader
+              groupName={groupName}
+              projectCount={groupProjects.length}
+              onToggle={toggleGroup}
+              onEdit={editProjectGroup}
+            />
+            {!collapsedGroupNames.has(groupName)
+              ? groupProjects.map((project) =>
+                  renderProjectBlock(project, { drag: () => {}, isDragging: false }),
+                )
+              : null}
+          </View>
+        ))}
+        <DraggableList
+          testID="sidebar-project-list"
+          data={groupedProjects.ungrouped}
+          keyExtractor={projectViewKeyExtractor}
+          renderItem={renderProject}
+          onDragEnd={handleProjectDragEnd}
+          extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
+          scrollEnabled={false}
+          useDragHandle
+          nestable={platformIsNative}
+          simultaneousGestureRef={parentGestureRef}
+          gestureHostPresented={dragGestureHostActive}
+          containerStyle={styles.projectListContainer}
+        />
+      </>
     );
 
   const content = (
@@ -2464,28 +2564,37 @@ function ProjectModeList({
   );
 
   return (
-    <View style={styles.container}>
-      {platformIsNative ? (
-        <NestableScrollContainer
-          {...nativeScrollGestureProps}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </NestableScrollContainer>
-      ) : (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </ScrollView>
-      )}
-    </View>
+    <>
+      <ProjectGroupsSheet
+        visible={editingGroupName !== undefined}
+        initialGroupName={editingGroupName ?? null}
+        projects={allProjects}
+        capableHosts={supportsProjectGroupsByServerId}
+        onClose={closeProjectGroupsSheet}
+      />
+      <View style={styles.container}>
+        {platformIsNative ? (
+          <NestableScrollContainer
+            {...nativeScrollGestureProps}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            testID="sidebar-project-workspace-list-scroll"
+          >
+            {content}
+          </NestableScrollContainer>
+        ) : (
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            testID="sidebar-project-workspace-list-scroll"
+          >
+            {content}
+          </ScrollView>
+        )}
+      </View>
+    </>
   );
 }
 
@@ -2506,6 +2615,20 @@ const styles = StyleSheet.create((theme) => ({
   projectListContainer: {
     width: "100%",
   },
+  projectGroupBlock: { marginBottom: theme.spacing[2] },
+  projectGroupHeader: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[2],
+  },
+  projectGroupTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "500",
+    flex: 1,
+  },
+  projectGroupCount: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   pinnedSection: {
     marginBottom: theme.spacing[1],
   },
