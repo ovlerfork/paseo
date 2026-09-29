@@ -671,6 +671,10 @@ interface ClientActivity {
   appVisibilityChangedAt: Date;
 }
 
+function projectGroupName(project: PersistedProjectRecord | null | undefined): string | null {
+  return project?.groupName ?? null;
+}
+
 export class Session {
   readonly delivery = new SessionDelivery(
     (source, message) => {
@@ -2714,6 +2718,8 @@ export class Session {
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    const projectMutation = this.dispatchProjectMutationMessage(msg);
+    if (projectMutation) return projectMutation;
     switch (msg.type) {
       case "fetch_agents_request":
         return this.handleFetchAgents(msg);
@@ -2731,10 +2737,6 @@ export class Session {
         return this.handleCloseItemsRequest(msg);
       case "update_agent_request":
         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
-      case "project.rename.request":
-        return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
-      case "project.icon.set.request":
-        return this.handleProjectIconSetRequest(msg);
       case "send_agent_message_request":
         return this.handleSendAgentMessageRequest(msg);
       case "wait_for_finish_request":
@@ -3432,6 +3434,81 @@ export class Session {
           agentId,
           accepted: false,
           error: getErrorMessageOr(error, "Failed to update agent"),
+        },
+      });
+    }
+  }
+
+  private dispatchProjectMutationMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "project.rename.request":
+        return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
+      case "project.group.set.request":
+        return this.handleProjectGroupSetRequest(msg.projectId, msg.groupName, msg.requestId);
+      case "project.icon.set.request":
+        return this.handleProjectIconSetRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleProjectGroupSetRequest(
+    projectId: string,
+    groupName: string | null,
+    requestId: string,
+  ): Promise<void> {
+    const normalizedGroupName = groupName?.trim() || null;
+    try {
+      const existing = await this.projectRegistry.get(projectId);
+      if (!existing) {
+        this.emit({
+          type: "project.group.set.response",
+          payload: {
+            requestId,
+            projectId,
+            accepted: false,
+            groupName: null,
+            error: "Project not found",
+          },
+        });
+        return;
+      }
+      const updated = {
+        ...existing,
+        groupName: normalizedGroupName,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.projectRegistry.upsert(updated);
+      this.emit({
+        type: "project.group.set.response",
+        payload: {
+          requestId,
+          projectId,
+          accepted: true,
+          groupName: normalizedGroupName,
+          error: null,
+        },
+      });
+      await this.emitProjectUpdate({ kind: "upsert", project: updated });
+      const affectedWorkspaceIds = (await this.workspaceRegistry.list())
+        .filter((workspace) => workspace.projectId === projectId)
+        .map((workspace) => workspace.workspaceId);
+      if (affectedWorkspaceIds.length > 0) {
+        await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
+      }
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, projectId, requestId },
+        "session: project.group.set.request error",
+      );
+      this.emit({
+        type: "project.group.set.response",
+        payload: {
+          requestId,
+          projectId,
+          accepted: false,
+          groupName: normalizedGroupName,
+          error: getErrorMessageOr(error, "Failed to update project group"),
         },
       });
     }
@@ -5537,6 +5614,7 @@ export class Session {
         : workspace.projectId,
       projectCustomName: resolvedProjectRecord?.customName ?? null,
       projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
+      projectGroupName: projectGroupName(resolvedProjectRecord),
       projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       workspaceDirectory: workspace.cwd,
       worktreeSlug,
@@ -5626,6 +5704,7 @@ export class Session {
         : result.workspace.projectId,
       projectCustomName: projectRecord?.customName ?? null,
       projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
+      projectGroupName: projectGroupName(projectRecord),
       projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
       worktreeSlug: basename(result.worktree.worktreePath),
@@ -5804,6 +5883,7 @@ export class Session {
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
+      projectGroupName: project.groupName ?? null,
       projectIconRevision: icon.revision,
       projectRootPath: project.rootPath,
       projectKind: project.kind,
