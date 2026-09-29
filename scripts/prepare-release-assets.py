@@ -22,6 +22,8 @@ def copy_files(source: pathlib.Path, destination: pathlib.Path, exclude_mac_meta
     for item in source.iterdir():
         if not item.is_file():
             continue
+        if item.name in {"builder-debug.yml", "builder-effective-config.yaml"}:
+            continue
         if exclude_mac_metadata and item.name.endswith("-mac.yml"):
             continue
         shutil.copy2(item, destination / item.name)
