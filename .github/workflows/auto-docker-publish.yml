@@ -829,11 +829,29 @@ jobs:
             echo "::endgroup::"
           }
           report_oom_evidence() {
+            local cgroup_relative=""
+            local cgroup_mount=""
+            local cgroup_directory=""
             echo "::group::Android OOM evidence"
-            grep -E 'oom|oom_kill' /sys/fs/cgroup/memory.events || true
-            oomctl dump || true
-            journalctl --no-pager -u systemd-oomd -n 50 || true
-            dmesg | grep -Ei 'out of memory|oom-kill|killed process' | tail -n 50 || true
+            if [[ -r /sys/fs/cgroup/cgroup.controllers ]]; then
+              cgroup_relative="$(awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup)"
+              cgroup_directory="/sys/fs/cgroup${cgroup_relative}"
+              echo "cgroup v2: ${cgroup_directory}"
+              grep -E 'oom|oom_kill' "${cgroup_directory}/memory.events" || true
+            else
+              cgroup_relative="$(awk -F: '$2 ~ /(^|,)memory(,|$)/ { print $3; exit }' /proc/self/cgroup)"
+              cgroup_mount="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "-" && $(i + 1) == "cgroup" && index("," $(i + 3) ",", ",memory,")) { print $5; exit } }' /proc/self/mountinfo)"
+              cgroup_directory="${cgroup_mount}${cgroup_relative}"
+              echo "cgroup v1: ${cgroup_directory}"
+              for cgroup_file in memory.oom_control memory.failcnt memory.limit_in_bytes memory.usage_in_bytes; do
+                if [[ -r "${cgroup_directory}/${cgroup_file}" ]]; then
+                  printf '%s: ' "${cgroup_file}"
+                  cat "${cgroup_directory}/${cgroup_file}"
+                fi
+              done
+            fi
+            sudo -n journalctl --no-pager -k -n 200 | grep -Ei 'out of memory|oom-kill|killed process' | tail -n 50 || true
+            sudo -n dmesg | grep -Ei 'out of memory|oom-kill|killed process' | tail -n 50 || true
             echo "::endgroup::"
           }
           resource_monitor_pid=""
@@ -889,7 +907,7 @@ jobs:
             report_resources
             (
               while :; do
-                sleep 60 &
+                sleep 15 &
                 monitor_sleep_pid=$!
                 wait "${monitor_sleep_pid}" || exit 0
                 report_resources
