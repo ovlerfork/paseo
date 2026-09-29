@@ -570,6 +570,10 @@ jobs:
         if: needs.prepare.outputs.publish == 'false'
         run: tar -xzf patched-source.tar.gz
 
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -626,6 +630,10 @@ jobs:
       - name: Extract patched source for a dry run
         if: needs.prepare.outputs.publish == 'false'
         run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -690,6 +698,10 @@ jobs:
         if: needs.prepare.outputs.publish == 'false'
         run: tar -xzf patched-source.tar.gz
 
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -746,6 +758,10 @@ jobs:
       - name: Extract patched source for a dry run
         if: needs.prepare.outputs.publish == 'false'
         run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -832,6 +848,10 @@ jobs:
       - name: Extract patched source for a dry run
         if: needs.prepare.outputs.publish == 'false'
         run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
 
       - name: Setup Node
         uses: actions/setup-node@v4

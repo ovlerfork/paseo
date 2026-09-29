@@ -157,6 +157,12 @@ for job in build-linux build-windows build-macos build-android build-ios; do
     printf '%s must be able to build the dry-run source without a branch push\n' "${job}" >&2
     exit 1
   fi
+  if ! grep -Fqx '      - name: Initialize Git metadata for a dry run' <<<"${job_body}" \
+    || ! grep -Fqx "        if: needs.prepare.outputs.publish == 'false'" <<<"${job_body}" \
+    || ! grep -Fqx '        run: git init --quiet' <<<"${job_body}"; then
+    printf '%s must initialize isolated Git metadata before its dry-run npm lifecycle scripts\n' "${job}" >&2
+    exit 1
+  fi
 done
 
 for job in build-linux build-windows build-macos build-android build-ios; do
