@@ -50,6 +50,55 @@ assert_prepare_contains '          elif [[ "${publish_mode}" == "dev" ]]; then'
 assert_prepare_contains '            upstream_ref=main'
 assert_prepare_contains '          elif [[ "${publish_mode}" == "prerelease" ]]; then'
 assert_prepare_contains '          PUBLISH_MODE: ${{ steps.upstream_ref.outputs.publish_mode }}'
+assert_prepare_contains '          version="${source_version}"'
+
+assert_equals() {
+  local expected="$1"
+  local actual="$2"
+  local name="$3"
+  if [[ "${actual}" != "${expected}" ]]; then
+    printf '%s failed: expected %s, got %s\n' "${name}" "${expected}" "${actual}" >&2
+    exit 1
+  fi
+}
+
+metadata_script="$(sed -n '/^      - name: Resolve metadata$/,/^      - name: Create immutable release source tag$/p' "${workflow_file}" | sed -n '/^        run: |$/,/^$/ { /^          / { s/^          //; p; } }')"
+metadata_source="$(mktemp -d)"
+metadata_output="${metadata_source}/output"
+trap 'rm -rf "${metadata_source}"' EXIT
+printf '{"version":"1.2.3"}\n' >"${metadata_source}/package.json"
+git -C "${metadata_source}" init --quiet
+git -C "${metadata_source}" config user.name test
+git -C "${metadata_source}" config user.email test@example.invalid
+git -C "${metadata_source}" add package.json
+git -C "${metadata_source}" commit --quiet -m source
+
+run_metadata() {
+  local input_version="$1"
+  : >"${metadata_output}"
+  (
+    cd "${metadata_source}"
+    GITHUB_OUTPUT="${metadata_output}" \
+      INPUT_PASEO_VERSION="${input_version}" \
+      PUBLISH_MODE=release \
+      REPO_OWNER=Example \
+      UPSTREAM_SHA=upstream-sha \
+      SOURCE_SHA=source-sha \
+      bash -c "${metadata_script}"
+  )
+}
+
+run_metadata ''
+assert_equals 'version=1.2.3' "$(grep -Fx 'version=1.2.3' "${metadata_output}")" \
+  'empty paseo_version uses source package version'
+run_metadata 1.2.3
+assert_equals 'version=1.2.3' "$(grep -Fx 'version=1.2.3' "${metadata_output}")" \
+  'matching paseo_version is accepted'
+if run_metadata 9.9.9 >/dev/null 2>&1; then
+  printf 'mismatched paseo_version must fail metadata resolution\n' >&2
+  exit 1
+fi
+
 assert_prepare_contains "        if: steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease'"
 assert_prepare_contains '          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}'
 assert_prepare_contains '          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}")'
@@ -72,16 +121,6 @@ fi
 
 newer_prerelease_pages='[{"tag_name":"v0.5.0","prerelease":false,"draft":false,"published_at":"2026-08-01T00:00:00Z"},{"tag_name":"v0.6.0-beta.1","prerelease":true,"draft":false,"published_at":"2026-08-02T00:00:00Z"}]'
 release_pages='[{"tag_name":"v0.5.0","prerelease":false,"draft":false,"published_at":"2026-08-01T00:00:00Z"},{"tag_name":"v0.6.0-beta.1","prerelease":true,"draft":false,"published_at":"2026-08-02T00:00:00Z"},{"tag_name":"v0.6.0","prerelease":false,"draft":false,"published_at":"2026-08-03T00:00:00Z"},{"tag_name":"v0.7.0-beta.1","prerelease":true,"draft":true,"published_at":"2026-08-04T00:00:00Z"}]'
-assert_equals() {
-  local expected="$1"
-  local actual="$2"
-  local name="$3"
-  if [[ "${actual}" != "${expected}" ]]; then
-    printf '%s failed: expected %s, got %s\n' "${name}" "${expected}" "${actual}" >&2
-    exit 1
-  fi
-}
-
 assert_equals v0.6.0-beta.1 \
   "$(printf '%s\n' "${newer_prerelease_pages}" | jq --slurp -r '[.[][] | select(.draft | not)] | max_by(.published_at).tag_name')" \
   "prerelease source selects a newer prerelease over an older stable release"

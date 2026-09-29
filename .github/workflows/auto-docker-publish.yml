@@ -226,11 +226,12 @@ jobs:
           SOURCE_SHA: ${{ steps.source_identity.outputs.sha }}
         run: |
           set -euo pipefail
-          if [[ -n "${INPUT_PASEO_VERSION}" ]]; then
-            version="${INPUT_PASEO_VERSION}"
-          else
-            version="$(node -p "require('./package.json').version")"
+          source_version="$(node -p "require('./package.json').version")"
+          if [[ -n "${INPUT_PASEO_VERSION}" && "${INPUT_PASEO_VERSION}" != "${source_version}" ]]; then
+            printf 'paseo_version input (%s) must match source/package.json version (%s)\n' "${INPUT_PASEO_VERSION}" "${source_version}" >&2
+            exit 1
           fi
+          version="${source_version}"
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
           source_sha="${SOURCE_SHA}"
