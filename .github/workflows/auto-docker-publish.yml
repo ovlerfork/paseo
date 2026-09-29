@@ -169,7 +169,7 @@ jobs:
           for patch in "${PATCHES[@]}"; do
             NAME=$(basename "$patch")
             echo "==== Applying: $NAME ===="
-            git am --3way "$patch"
+            git am --3way --committer-date-is-author-date "$patch"
             APPLIED=$((APPLIED + 1))
           done
           echo "Applied ${APPLIED} patch(es)."
@@ -187,7 +187,9 @@ jobs:
             rm -rf .github/workflows
             git add -A .github/workflows
             if ! git diff --cached --quiet; then
-              git commit -m "Drop upstream workflow files from generated patched branch"
+              commit_date="$(git show -s --format=%aI HEAD)"
+              GIT_AUTHOR_DATE="${commit_date}" GIT_COMMITTER_DATE="${commit_date}" \
+                git commit -m "Drop upstream workflow files from generated patched branch"
             fi
           fi
 

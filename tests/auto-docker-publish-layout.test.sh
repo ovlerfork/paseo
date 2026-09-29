@@ -104,6 +104,10 @@ if ! grep -Fqx '        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHU
   exit 1
 fi
 
+assert_prepare_contains '            git am --3way --committer-date-is-author-date "$patch"'
+assert_prepare_contains '              commit_date="$(git show -s --format=%aI HEAD)"'
+assert_prepare_contains '              GIT_AUTHOR_DATE="${commit_date}" GIT_COMMITTER_DATE="${commit_date}" \'
+
 source_identity_line="$(grep -nF -m1 '        id: source_identity' <<<"${prepare_job}" | cut -d: -f1)"
 sanitization_line="$(grep -nF -m1 '      - name: Sanitize generated branch' <<<"${prepare_job}" | cut -d: -f1)"
 if [[ -z "${source_identity_line}" || -z "${sanitization_line}" || "${source_identity_line}" -ge "${sanitization_line}" ]]; then
