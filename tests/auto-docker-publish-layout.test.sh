@@ -42,6 +42,8 @@ assert_prepare_contains '      - name: Resolve upstream source ref'
 assert_prepare_contains '        id: upstream_ref'
 assert_prepare_contains "          ref: \${{ steps.upstream_ref.outputs.ref }}"
 assert_prepare_contains '          EVENT_NAME: ${{ github.event_name }}'
+assert_prepare_contains '          INPUT_BUILD_SCOPE: ${{ inputs.build_scope }}'
+assert_prepare_contains '          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_BUILD_SCOPE}" != "all" && "${INPUT_PUBLISH}" == "true" ]]; then'
 assert_prepare_contains '            publish_mode=prerelease'
 assert_prepare_contains '            publish_mode=dev'
 assert_prepare_contains '          elif [[ "${publish_mode}" == "dev" ]]; then'
@@ -165,10 +167,35 @@ for job in build-linux build-windows build-macos build-android build-ios; do
   fi
 done
 
+job_condition() {
+  local job="$1"
+  awk -v job="${job}" '
+    $0 ~ "^  " job ":" { in_job = 1; next }
+    in_job && $0 ~ /^  [a-z][a-z-]*:/ { exit }
+    in_job && /^    if:/ { in_condition = 1; sub(/^    if: ?/, ""); printf "%s ", $0; next }
+    in_condition && /^      / { sub(/^      /, ""); printf "%s ", $0; next }
+    in_condition { exit }
+  ' "${workflow_file}"
+}
+
 for job in build-linux build-windows build-macos build-android build-ios; do
-  job_body="$(sed -n "/^  ${job}:/,/^  [a-z].*:/p" "${workflow_file}")"
-  if ! grep -Fqx "    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'" <<<"${job_body}"; then
-    printf '%s must build clients for a development release when assets are needed\n' "${job}" >&2
+  condition="$(job_condition "${job}")"
+  for requirement in \
+    "needs.prepare.outputs.release_needed == 'true'" \
+    "needs.prepare.outputs.publish == 'false'" \
+    "github.event_name != 'workflow_dispatch'" \
+    "inputs.build_scope == 'all'"; do
+    if [[ "${condition}" != *"${requirement}"* ]]; then
+      printf '%s must build clients when release assets are needed: missing %s\n' "${job}" "${requirement}" >&2
+      exit 1
+    fi
+  done
+  if [[ "${job}" == "build-android" && "${condition}" != *"inputs.build_scope == 'android'"* ]]; then
+    printf 'build-android must run for the unpublished android build scope\n' >&2
+    exit 1
+  fi
+  if [[ "${job}" != "build-android" && "${condition}" == *"inputs.build_scope == 'android'"* ]]; then
+    printf '%s must skip the unpublished android build scope\n' "${job}" >&2
     exit 1
   fi
 done

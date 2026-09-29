@@ -830,13 +830,24 @@ jobs:
           if [[ "${ENABLE_ANDROID_RESOURCE_DIAGNOSTICS}" == "true" ]]; then
             report_resources
             (
-              while sleep 60; do
+              while :; do
+                sleep 60 &
+                monitor_sleep_pid=$!
+                wait "${monitor_sleep_pid}" || exit 0
                 report_resources
               done
             ) &
             resource_monitor_pid=$!
             cleanup_resources() {
               local status="$1"
+              local monitor_child
+              while IFS= read -r monitor_child; do
+                kill "${monitor_child}" 2>/dev/null || true
+              done < <(pgrep -P "${resource_monitor_pid}" || true)
+              for _ in {1..10}; do
+                kill -0 "${resource_monitor_pid}" 2>/dev/null || break
+                sleep 0.1
+              done
               kill "${resource_monitor_pid}" 2>/dev/null || true
               wait "${resource_monitor_pid}" 2>/dev/null || true
               report_resources || true
