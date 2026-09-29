@@ -93,7 +93,7 @@ if grep -Fq 'gh api --paginate --slurp' "${workflow_file}"; then
   printf 'workflow must not combine unsupported gh api --paginate --slurp flags\n' >&2
   exit 1
 fi
-if grep -Fq '"${version}" == *-*' "${workflow_file}"; then
+if grep -Fq 'publish_mode="${version}"' "${workflow_file}"; then
   printf 'workflow must select publish mode from the upstream ref policy, not package metadata\n' >&2
   exit 1
 fi
@@ -121,3 +121,71 @@ assert_job_not_contains '          path: source/policy'
 assert_job_not_contains '          context: .'
 
 printf 'auto docker publish checkout layout test passed\n'
+release_job="$(sed -n '/^  publish-release:/,$p' "${workflow_file}")"
+
+assert_release_contains() {
+  local expected="$1"
+  if ! grep -Fqx "${expected}" <<<"${release_job}"; then
+    printf 'release workflow is missing: %s\n' "${expected}" >&2
+    exit 1
+  fi
+}
+
+assert_prepare_contains '      release_tag: ${{ steps.meta.outputs.release_tag }}'
+assert_prepare_contains '          release_tag="v${version}-source-${source_sha}"'
+assert_prepare_contains '          if [[ "${PUBLISH_MODE}" != "release" ]]; then'
+assert_prepare_contains '            release_tag="${release_tag}-${PUBLISH_MODE}"'
+assert_prepare_contains '            release_channel=beta'
+assert_prepare_contains '            release_channel=latest'
+assert_prepare_contains '      - name: Create immutable release source tag'
+assert_prepare_contains "        if: steps.publish.outputs.value == 'false'"
+assert_prepare_contains '          name: patched-source'
+assert_prepare_contains '          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}'
+assert_prepare_contains '            if grep -Fxq "Paseo-Setup-${VERSION}-x64.exe" <<<"${assets}" \'
+assert_prepare_contains '              && grep -Fxq "Paseo-${VERSION}-x64.tar.gz" <<<"${assets}" \'
+if [[ -f "$(dirname "${workflow_file}")/auto-desktop-build.yml" ]]; then
+  printf 'desktop builds must run from the release workflow, not a separate source preparation workflow\n' >&2
+  exit 1
+fi
+for job in build-linux build-windows build-macos build-android build-ios; do
+  job_body="$(sed -n "/^  ${job}:/,/^  [a-z].*:/p" "${workflow_file}")"
+  if ! grep -Fqx '          ref: ${{ needs.prepare.outputs.patched_sha }}' <<<"${job_body}"; then
+    printf '%s must build the same sanitized patched source as GHCR\n' "${job}" >&2
+    exit 1
+  fi
+  if ! grep -Fqx '          name: patched-source' <<<"${job_body}"; then
+    printf '%s must be able to build the dry-run source without a branch push\n' "${job}" >&2
+    exit 1
+  fi
+done
+
+for job in build-linux build-windows build-macos build-android build-ios; do
+  job_body="$(sed -n "/^  ${job}:/,/^  [a-z].*:/p" "${workflow_file}")"
+  if ! grep -Fqx "    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'" <<<"${job_body}"; then
+    printf '%s must build clients for a development release when assets are needed\n' "${job}" >&2
+    exit 1
+  fi
+done
+assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-android, build-ios]"
+assert_release_contains '          path: release-policy'
+assert_release_contains '        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"'
+assert_release_contains '          --channel "${RELEASE_CHANNEL}"'
+assert_release_contains '          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}'
+assert_release_contains '          image_tag="${VERSION}-${SOURCE_SHA}"'
+assert_release_contains '          if [[ "${PUBLISH_MODE}" == "dev" ]]; then'
+assert_release_contains '            image_tag="dev-${UPSTREAM_SHA}-source-${SOURCE_SHA}"'
+assert_release_contains '          if [[ "${PUBLISH_MODE}" != "release" ]]; then'
+if ! grep -Fq 'ghcr.io/%s/paseo:%s' <<<"${release_job}"; then
+  printf 'release notes must identify the matching immutable GHCR image\n' >&2
+  exit 1
+fi
+
+printf 'auto docker publish release workflow layout test passed\n'
+
+updater_patch="$(dirname "${workflow_file}")/../../patches/cur/0013-fix-desktop-use-fork-github-releases.patch"
+if ! grep -Fqx '+  owner: ovlerfork' "${updater_patch}"; then
+  printf 'desktop updater patch must target the fork GitHub releases\n' >&2
+  exit 1
+fi
+
+printf 'desktop updater release source test passed\n'

@@ -1,0 +1,22 @@
+From 3213a49a9dc66bb3ab058d85d52a5378e70ec502 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 05:04:40 +0000
+Subject: [PATCH] Use fork releases for desktop updates
+
+---
+ packages/desktop/electron-builder.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/packages/desktop/electron-builder.yml b/packages/desktop/electron-builder.yml
+index fb01c7b..8207021 100644
+--- a/packages/desktop/electron-builder.yml
++++ b/packages/desktop/electron-builder.yml
+@@ -33,7 +33,7 @@ extraResources:
+     to: editor-target-icons
+ publish:
+   provider: github
+-  owner: getpaseo
++  owner: ovlerfork
+   repo: paseo
+ mac:
+   artifactName: "Paseo-${version}-${arch}.${ext}"

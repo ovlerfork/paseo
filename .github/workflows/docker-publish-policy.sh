@@ -10,9 +10,9 @@ docker_publish_source_tags() {
   local variant="$7"
 
   if [[ "${publish_mode}" == "dev" && -n "${variant}" ]]; then
-    printf '%s\n%s\n' "${image_base}:dev-${variant}" "${image_base}:dev-${upstream_sha}-${variant}"
+    printf '%s\n%s\n%s\n' "${image_base}:dev-${variant}" "${image_base}:dev-${upstream_sha}-${variant}" "${image_base}:dev-${upstream_sha}-source-${source_sha}-${variant}"
   elif [[ "${publish_mode}" == "dev" ]]; then
-    printf '%s\n%s\n' "${image_base}:dev" "${image_base}:dev-${upstream_sha}"
+    printf '%s\n%s\n%s\n' "${image_base}:dev" "${image_base}:dev-${upstream_sha}" "${image_base}:dev-${upstream_sha}-source-${source_sha}"
   elif [[ "${publish_mode}" == "prerelease" && -n "${variant}" ]]; then
     printf '%s\n%s\n%s\n%s\n' "${image_base}:prerelease-${variant}" "${image_base}:prerelease-${source_sha}-${variant}" "${image_base}:${resolved_version}-${variant}" "${image_base}:${resolved_version}-${source_sha}-${variant}"
   elif [[ "${publish_mode}" == "prerelease" ]]; then
@@ -42,7 +42,7 @@ docker_publish_immutable_tags() {
   local upstream_sha="$4"
 
   if [[ "${publish_mode}" == "dev" ]]; then
-    printf 'dev-%s\ndev-%s-ubuntu-sandbox\n' "${upstream_sha}" "${upstream_sha}"
+    printf 'dev-%s-source-%s\ndev-%s-source-%s-ubuntu-sandbox\n' "${upstream_sha}" "${source_sha}" "${upstream_sha}" "${source_sha}"
   elif [[ "${publish_mode}" == "prerelease" ]]; then
     printf 'prerelease-%s\nprerelease-%s-ubuntu-sandbox\n' "${source_sha}" "${source_sha}"
   else
