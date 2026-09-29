@@ -26,10 +26,10 @@ jobs:
   apply-and-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout patchset branch
+      - name: Checkout patchset revision
         uses: actions/checkout@v4
         with:
-          ref: patchset
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: patchset
 
       - name: Record exact patchset SHA
