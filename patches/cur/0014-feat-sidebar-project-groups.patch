@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 06:10:40 +0000
+Date: Tue, 29 Sep 2026 06:51:18 +0000
 Subject: [PATCH] Add shared project groups to the sidebar
 
 
@@ -1229,7 +1229,7 @@ index 3394c8e..12d34c1 100644
  
  describe("workspace descriptor message compatibility", () => {
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index a716d45..caed4b7 100644
+index a716d45..498fee7 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
 @@ -950,6 +950,14 @@ export const ProjectRenameRequestSchema = z.object({
@@ -1277,7 +1277,7 @@ index a716d45..caed4b7 100644
          projectRemove: z.boolean().optional(),
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: z.boolean().optional(),
-+        // COMPAT(projectGroups): added in v0.10.0, remove gate after 2027-03-29.
++        // Unmodified servers do not advertise this fork capability.
 +        projectGroups: z.boolean().optional(),
          // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
          worktreeRestore: z.boolean().optional(),
@@ -1286,7 +1286,7 @@ index a716d45..caed4b7 100644
      // Identifies the project's stored custom icon; null means automatic.
      // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
      projectCustomIconRevision: z.string().nullable().optional(),
-+    // COMPAT(projectGroups): added in v0.10.0, remove optional parsing after 2027-03-29.
++    // Unmodified servers omit this fork-specific project metadata.
 +    projectGroupName: z.string().nullable().optional(),
      projectRootPath: z.string(),
      workspaceDirectory: z.string().optional(),
@@ -1295,7 +1295,7 @@ index a716d45..caed4b7 100644
    projectCustomName: z.string().nullable().optional(),
    // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
    projectCustomIconRevision: z.string().nullable().optional(),
-+  // COMPAT(projectGroups): added in v0.10.0, remove optional parsing after 2027-03-29.
++  // Unmodified servers omit this fork-specific project metadata.
 +  projectGroupName: z.string().nullable().optional(),
    // Fingerprints the effective icon, including automatic discovery and the
    // absence of an icon. Clients may persist icon results against this value.
@@ -1546,7 +1546,7 @@ index 1be52bc..4a1c46e 100644
    const emitted: SessionOutboundMessage[] = [];
    const session = asTestSession(
 diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
-index 30a9e59..b5462bd 100644
+index 30a9e59..2ae2e50 100644
 --- a/packages/server/src/server/websocket-server.ts
 +++ b/packages/server/src/server/websocket-server.ts
 @@ -320,6 +320,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
@@ -1561,7 +1561,7 @@ index 30a9e59..b5462bd 100644
          projectRemove: true,
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: true,
-+        // COMPAT(projectGroups): added in v0.10.0, remove gate after 2027-03-29.
++        // Fork capability advertised only by servers that implement project groups.
 +        projectGroups: true,
          // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
          projectList: true,
