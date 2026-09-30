@@ -41,7 +41,6 @@ on:
         type: choice
         options:
           - all
-          - android
 
 permissions:
   contents: write
@@ -295,7 +294,6 @@ jobs:
               && grep -Fxq "Paseo-${VERSION}-x86_64.rpm" <<<"${assets}" \
               && grep -Fxq "Paseo-${VERSION}-x64.tar.gz" <<<"${assets}" \
               && grep -Fxq "${RELEASE_CHANNEL}-linux.yml" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-android-release.apk" <<<"${assets}" \
               && grep -Fxq "Paseo-${VERSION}-ios-unsigned.ipa" <<<"${assets}"; then
               needed=false
             fi
@@ -753,193 +751,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  build-android:
-    needs: prepare
-    if: >
-      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all' || inputs.build_scope == 'android')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: source
-    steps:
-      - name: Checkout patched source
-        if: needs.prepare.outputs.publish == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.patched_sha }}
-          path: source
-          fetch-depth: 0
-
-      - name: Download patched source for a dry run
-        if: needs.prepare.outputs.publish == 'false'
-        uses: actions/download-artifact@v4
-        with:
-          name: patched-source
-          path: source
-
-      - name: Extract patched source for a dry run
-        if: needs.prepare.outputs.publish == 'false'
-        run: tar -xzf patched-source.tar.gz
-
-      - name: Initialize Git metadata for a dry run
-        if: needs.prepare.outputs.publish == 'false'
-        run: git init --quiet
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: source/package-lock.json
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Install JS dependencies
-        run: npm ci
-
-      - name: Build signed Android APK
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ENABLE_ANDROID_RESOURCE_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && inputs.build_scope == 'android' && needs.prepare.outputs.publish == 'false' }}
-        run: |
-          set -euo pipefail
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::${name} is required to publish an installable release APK."
-              exit 1
-            fi
-          done
-          report_resources() {
-            echo "::group::Android build resources $(date --iso-8601=seconds)"
-            nproc
-            free -h
-            df -h "${GITHUB_WORKSPACE}"
-            swapon --show || true
-            ps -eo pid,ppid,rss,comm --sort=-rss | head -n 20 || true
-            echo "::endgroup::"
-          }
-          report_oom_evidence() {
-            local cgroup_relative=""
-            local cgroup_mount=""
-            local cgroup_directory=""
-            echo "::group::Android OOM evidence"
-            if [[ -r /sys/fs/cgroup/cgroup.controllers ]]; then
-              cgroup_relative="$(awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup)"
-              cgroup_directory="/sys/fs/cgroup${cgroup_relative}"
-              echo "cgroup v2: ${cgroup_directory}"
-              grep -E 'oom|oom_kill' "${cgroup_directory}/memory.events" || true
-            else
-              cgroup_relative="$(awk -F: '$2 ~ /(^|,)memory(,|$)/ { print $3; exit }' /proc/self/cgroup)"
-              cgroup_mount="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "-" && $(i + 1) == "cgroup" && index("," $(i + 3) ",", ",memory,")) { print $5; exit } }' /proc/self/mountinfo)"
-              cgroup_directory="${cgroup_mount}${cgroup_relative}"
-              echo "cgroup v1: ${cgroup_directory}"
-              for cgroup_file in memory.oom_control memory.failcnt memory.limit_in_bytes memory.usage_in_bytes; do
-                if [[ -r "${cgroup_directory}/${cgroup_file}" ]]; then
-                  printf '%s: ' "${cgroup_file}"
-                  cat "${cgroup_directory}/${cgroup_file}"
-                fi
-              done
-            fi
-            sudo -n journalctl --no-pager -k -n 200 | grep -Ei 'out of memory|oom-kill|killed process' | tail -n 50 || true
-            sudo -n dmesg | grep -Ei 'out of memory|oom-kill|killed process' | tail -n 50 || true
-            echo "::endgroup::"
-          }
-          resource_monitor_pid=""
-          android_swap_file=""
-          android_swap_created=false
-          android_swap_active=false
-          cleanup_android_build() {
-            local status="$1"
-            local monitor_child
-            if [[ -n "${resource_monitor_pid}" ]]; then
-              while IFS= read -r monitor_child; do
-                kill "${monitor_child}" 2>/dev/null || true
-              done < <(pgrep -P "${resource_monitor_pid}" || true)
-              for _ in {1..10}; do
-                kill -0 "${resource_monitor_pid}" 2>/dev/null || break
-                sleep 0.1
-              done
-              kill "${resource_monitor_pid}" 2>/dev/null || true
-              wait "${resource_monitor_pid}" 2>/dev/null || true
-            fi
-            if [[ "${ENABLE_ANDROID_RESOURCE_DIAGNOSTICS}" == "true" ]]; then
-              report_resources || true
-              report_oom_evidence || true
-            fi
-            if [[ "${android_swap_active}" == "true" ]]; then
-              if sudo swapoff "${android_swap_file}"; then
-                rm -f "${android_swap_file}" || true
-              else
-                echo "::warning::Unable to disable Android build swap file before runner cleanup."
-              fi
-            elif [[ "${android_swap_created}" == "true" ]]; then
-              rm -f "${android_swap_file}" || true
-            fi
-            exit "${status}"
-          }
-          trap 'cleanup_android_build $?' EXIT
-          trap 'exit 130' INT
-          trap 'exit 143' TERM
-          android_swap_file="$(mktemp "${RUNNER_TEMP}/paseo-android-build.XXXXXX.swap")"
-          android_swap_created=true
-          if [[ ! -f "${android_swap_file}" || ! -O "${android_swap_file}" ]]; then
-            echo "::error::Android build swap file must be an owned regular file."
-            exit 1
-          fi
-          chmod 600 "${android_swap_file}"
-          dd if=/dev/zero of="${android_swap_file}" bs=1M count=4096 conv=notrunc status=none
-          sudo mkswap "${android_swap_file}" >/dev/null
-          sudo swapon --priority 10 "${android_swap_file}"
-          android_swap_active=true
-          keystore_path="${RUNNER_TEMP}/paseo-release.keystore"
-          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
-          if [[ "${ENABLE_ANDROID_RESOURCE_DIAGNOSTICS}" == "true" ]]; then
-            report_resources
-            (
-              while :; do
-                sleep 15 &
-                monitor_sleep_pid=$!
-                wait "${monitor_sleep_pid}" || exit 0
-                report_resources
-              done
-            ) &
-            resource_monitor_pid=$!
-          fi
-          npm run build:app-deps
-          (
-            cd packages/app
-            APP_VARIANT=production npx expo prebuild --platform android --clean --non-interactive
-            cd android
-            ./gradlew :app:assembleRelease --max-workers=2 \
-              -Pandroid.injected.signing.store.file="${keystore_path}" \
-              -Pandroid.injected.signing.store.type=pkcs12 \
-              -Pandroid.injected.signing.store.password="${ANDROID_KEYSTORE_PASSWORD}" \
-              -Pandroid.injected.signing.key.alias="${ANDROID_KEY_ALIAS}" \
-              -Pandroid.injected.signing.key.password="${ANDROID_KEY_PASSWORD}"
-          )
-          apk_path="packages/app/android/app/build/outputs/apk/release/app-release.apk"
-          test -f "${apk_path}"
-          cp "${apk_path}" "Paseo-${{ needs.prepare.outputs.version }}-android-release.apk"
-
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-android-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
-          path: source/Paseo-${{ needs.prepare.outputs.version }}-android-release.apk
-          if-no-files-found: error
-          retention-days: 14
-
   build-ios:
     needs: prepare
     if: >
@@ -1022,7 +833,7 @@ jobs:
           retention-days: 14
 
   publish-release:
-    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-android, build-ios]
+    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]
     if: >
       always() &&
       needs.prepare.outputs.publish == 'true' &&
@@ -1031,7 +842,6 @@ jobs:
       needs.build-linux.result == 'success' &&
       needs.build-windows.result == 'success' &&
       needs.build-macos.result == 'success' &&
-      needs.build-android.result == 'success' &&
       needs.build-ios.result == 'success'
     runs-on: ubuntu-latest
     permissions:

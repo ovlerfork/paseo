@@ -83,10 +83,6 @@ def main() -> None:
         raise SystemExit(f"{metadata_prefix}.yml is missing a Windows architecture")
 
     shutil.copy2(
-        one_directory(artifacts, f"release-android-{args.version}-*") / f"Paseo-{args.version}-android-release.apk",
-        output,
-    )
-    shutil.copy2(
         one_directory(artifacts, f"release-ios-{args.version}-*") / f"Paseo-{args.version}-ios-unsigned.ipa",
         output,
     )

@@ -11,14 +11,13 @@ make_fixture() {
   local root="$3"
   mkdir -p "${root}/release-windows-${version}-source" "${root}/release-linux-${version}-source" \
     "${root}/release-macos-arm64-${version}-source" "${root}/release-macos-x64-${version}-source" \
-    "${root}/release-android-${version}-source" "${root}/release-ios-${version}-source"
+    "${root}/release-ios-${version}-source"
   for name in "Paseo-Setup-${version}-x64.exe" "Paseo-Setup-${version}-arm64.exe"; do
     : >"${root}/release-windows-${version}-source/${name}"
   done
   : >"${root}/release-linux-${version}-source/Paseo-x86_64.AppImage"
   : >"${root}/release-macos-arm64-${version}-source/Paseo-${version}-arm64.zip"
   : >"${root}/release-macos-x64-${version}-source/Paseo-${version}-x64.zip"
-  : >"${root}/release-android-${version}-source/Paseo-${version}-android-release.apk"
   : >"${root}/release-ios-${version}-source/Paseo-${version}-ios-unsigned.ipa"
   cat >"${root}/release-windows-${version}-source/${channel}.yml" <<EOF
 files:
@@ -58,7 +57,6 @@ for channel in latest beta; do
   test -f "${root}/out/${channel}-linux.yml"
   test -f "${root}/out/${channel}-mac.yml"
   test -f "${root}/out/Paseo-Setup-${version}-x64.exe"
-  test -f "${root}/out/Paseo-${version}-android-release.apk"
   python3 - "${root}/out/${channel}-mac.yml" <<'PY'
 import sys
 import yaml

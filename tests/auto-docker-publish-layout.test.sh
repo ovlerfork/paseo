@@ -192,7 +192,7 @@ if [[ -f "$(dirname "${workflow_file}")/auto-desktop-build.yml" ]]; then
   printf 'desktop builds must run from the release workflow, not a separate source preparation workflow\n' >&2
   exit 1
 fi
-for job in build-linux build-windows build-macos build-android build-ios; do
+for job in build-linux build-windows build-macos build-ios; do
   job_body="$(sed -n "/^  ${job}:/,/^  [a-z].*:/p" "${workflow_file}")"
   if ! grep -Fqx '          ref: ${{ needs.prepare.outputs.patched_sha }}' <<<"${job_body}"; then
     printf '%s must build the same sanitized patched source as GHCR\n' "${job}" >&2
@@ -221,7 +221,7 @@ job_condition() {
   ' "${workflow_file}"
 }
 
-for job in build-linux build-windows build-macos build-android build-ios; do
+for job in build-linux build-windows build-macos build-ios; do
   condition="$(job_condition "${job}")"
   for requirement in \
     "needs.prepare.outputs.release_needed == 'true'" \
@@ -233,16 +233,8 @@ for job in build-linux build-windows build-macos build-android build-ios; do
       exit 1
     fi
   done
-  if [[ "${job}" == "build-android" && "${condition}" != *"inputs.build_scope == 'android'"* ]]; then
-    printf 'build-android must run for the unpublished android build scope\n' >&2
-    exit 1
-  fi
-  if [[ "${job}" != "build-android" && "${condition}" == *"inputs.build_scope == 'android'"* ]]; then
-    printf '%s must skip the unpublished android build scope\n' "${job}" >&2
-    exit 1
-  fi
 done
-macos_job="$(sed -n '/^  build-macos:/,/^  build-android:/p' "${workflow_file}")"
+macos_job="$(sed -n '/^  build-macos:/,/^  build-ios:/p' "${workflow_file}")"
 ios_job="$(sed -n '/^  build-ios:/,/^  publish-release:/p' "${workflow_file}")"
 if ! grep -Fqx '          NODE_OPTIONS: --max-old-space-size=4096' <<<"${macos_job}"; then
   printf 'macOS desktop build must raise the observed V8 old-space ceiling\n' >&2
@@ -254,7 +246,7 @@ if ! grep -Fqx '      - name: Select supported Xcode' <<<"${ios_job}" \
   exit 1
 fi
 
-assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-android, build-ios]"
+assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]"
 assert_release_contains '          path: release-policy'
 assert_release_contains '        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"'
 assert_release_contains '          --channel "${RELEASE_CHANNEL}"'
