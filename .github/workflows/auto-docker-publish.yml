@@ -272,8 +272,6 @@ jobs:
               && grep -Fxq "Paseo-Setup-${VERSION}-arm64.exe" <<<"${assets}" \
               && grep -Fxq "Paseo-Setup-${VERSION}-arm64.zip" <<<"${assets}" \
               && grep -Fxq "${RELEASE_CHANNEL}.yml" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-x64.dmg" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-x64.zip" <<<"${assets}" \
               && grep -Fxq "Paseo-${VERSION}-arm64.dmg" <<<"${assets}" \
               && grep -Fxq "Paseo-${VERSION}-arm64.zip" <<<"${assets}" \
               && grep -Fxq "${RELEASE_CHANNEL}-mac.yml" <<<"${assets}" \
@@ -666,15 +664,7 @@ jobs:
   build-macos:
     needs: prepare
     if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            electron_arch: arm64
-          - runner: macos-15-intel
-            electron_arch: x64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     permissions:
       contents: read
     defaults:
@@ -714,21 +704,132 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Build unsigned macOS desktop artifacts
+      - name: Build ad-hoc-signed macOS desktop artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NODE_OPTIONS: --max-old-space-size=4096
         run: >
-          npm run build:desktop -- --publish never --mac --${{ matrix.electron_arch }}
-          -c.mac.identity=null
+          npm run build:desktop -- --publish never --mac --arm64
+          -c.mac.identity=-
           -c.mac.notarize=false
+
+      - name: Verify macOS archive app signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_app_signature() {
+            local app_path="$1"
+            local signature_details
+
+            codesign --verify --deep --strict --verbose=2 "${app_path}"
+            signature_details="$(codesign --display --verbose=4 "${app_path}" 2>&1)"
+            grep -Fqx 'Signature=adhoc' <<<"${signature_details}"
+          }
+
+          stop_app() {
+            local pid="${app_pid:-}"
+
+            [[ -n "${pid}" ]] || return 0
+            if kill -0 "${pid}" 2>/dev/null; then
+              kill -TERM "${pid}" 2>/dev/null || true
+              for _ in {1..10}; do
+                kill -0 "${pid}" 2>/dev/null || break
+                sleep 0.2
+              done
+              kill -0 "${pid}" 2>/dev/null && kill -KILL "${pid}" 2>/dev/null || true
+            fi
+            wait "${pid}" 2>/dev/null || true
+            app_pid=''
+          }
+
+          cleanup() {
+            local status="$?"
+
+            stop_app
+            if [[ "${dmg_mounted}" == true ]]; then
+              if hdiutil detach -quiet "${dmg_mount}"; then
+                dmg_mounted=false
+              fi
+            fi
+            if [[ "${dmg_mounted}" == false ]]; then
+              rm -rf "${verification_dir}"
+            fi
+            exit "${status}"
+          }
+
+          smoke_test_app_startup() {
+            local app_path="$1"
+            local executable_name
+            local executable_path
+            local startup_log
+            local startup_status
+            local user_data_dir
+
+            executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${app_path}/Contents/Info.plist")"
+            executable_path="${app_path}/Contents/MacOS/${executable_name}"
+            startup_log="${verification_dir}/startup.log"
+            user_data_dir="$(mktemp -d "${verification_dir}/user-data.XXXXXX")"
+            [[ -x "${executable_path}" ]]
+
+            PASEO_ELECTRON_USER_DATA_DIR="${user_data_dir}" "${executable_path}" >"${startup_log}" 2>&1 &
+            app_pid="$!"
+            sleep 5
+            if ! kill -0 "${app_pid}" 2>/dev/null; then
+              if wait "${app_pid}"; then
+                startup_status=0
+              else
+                startup_status="$?"
+              fi
+              app_pid=''
+              printf 'App exited during startup (status %s): %s\n' "${startup_status}" "${executable_path}" >&2
+              if [[ -s "${startup_log}" ]]; then
+                cat "${startup_log}" >&2
+              else
+                printf 'Captured stdout/stderr: (empty)\n' >&2
+              fi
+              exit 1
+            fi
+            stop_app
+          }
+
+          release_dir=packages/desktop/release
+          zip_file="$(find "${release_dir}" -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          dmg_file="$(find "${release_dir}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          [[ -n "${zip_file}" && -n "${dmg_file}" ]]
+
+          verification_dir="$(mktemp -d)"
+          app_pid=''
+          dmg_mount="${verification_dir}/dmg-mount"
+          dmg_mounted=false
+          trap cleanup EXIT
+
+          ditto -x -k "${zip_file}" "${verification_dir}/zip"
+          zip_app="$(find "${verification_dir}/zip" -type d -name '*.app' -print -quit)"
+          [[ -n "${zip_app}" ]]
+          verify_app_signature "${zip_app}"
+          smoke_test_app_startup "${zip_app}"
+
+          mkdir -p "${dmg_mount}"
+          hdiutil attach -nobrowse -readonly -mountpoint "${dmg_mount}" "${dmg_file}" >/dev/null
+          dmg_mounted=true
+          dmg_app="$(find "${dmg_mount}" -type d -name '*.app' -print -quit)"
+          [[ -n "${dmg_app}" ]]
+          dmg_install_dir="${verification_dir}/dmg-installed"
+          dmg_installed_app="${dmg_install_dir}/$(basename "${dmg_app}")"
+          mkdir -p "${dmg_install_dir}"
+          ditto "${dmg_app}" "${dmg_installed_app}"
+          hdiutil detach -quiet "${dmg_mount}"
+          dmg_mounted=false
+          verify_app_signature "${dmg_installed_app}"
+          smoke_test_app_startup "${dmg_installed_app}"
 
       - name: Upload macOS desktop artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-macos-${{ matrix.electron_arch }}-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          name: release-macos-arm64-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
           path: source/packages/desktop/release/*
           if-no-files-found: error
           retention-days: 14
