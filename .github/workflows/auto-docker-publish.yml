@@ -34,13 +34,6 @@ on:
         required: false
         default: true
         type: boolean
-      build_scope:
-        description: "Artifacts to build for an unpublished manual verification"
-        required: false
-        default: all
-        type: choice
-        options:
-          - all
 
 permissions:
   contents: write
@@ -94,13 +87,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_PUBLISH: ${{ inputs.publish }}
-          INPUT_BUILD_SCOPE: ${{ inputs.build_scope }}
         run: |
           set -euo pipefail
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_BUILD_SCOPE}" != "all" && "${INPUT_PUBLISH}" == "true" ]]; then
-            echo "::error::build_scope=${INPUT_BUILD_SCOPE} requires publish=false because published releases require every artifact."
-            exit 1
-          fi
           if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_PUBLISH}" != "true" ]]; then
             echo "value=false" >> "$GITHUB_OUTPUT"
           else
@@ -557,9 +545,7 @@ jobs:
 
   build-linux:
     needs: prepare
-    if: >
-      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -620,9 +606,7 @@ jobs:
 
   build-windows:
     needs: prepare
-    if: >
-      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -681,9 +665,7 @@ jobs:
 
   build-macos:
     needs: prepare
-    if: >
-      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -753,9 +735,7 @@ jobs:
 
   build-ios:
     needs: prepare
-    if: >
-      (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false') &&
-      (github.event_name != 'workflow_dispatch' || inputs.build_scope == 'all')
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
     runs-on: macos-14
     permissions:
       contents: read

@@ -42,8 +42,6 @@ assert_prepare_contains '      - name: Resolve upstream source ref'
 assert_prepare_contains '        id: upstream_ref'
 assert_prepare_contains "          ref: \${{ steps.upstream_ref.outputs.ref }}"
 assert_prepare_contains '          EVENT_NAME: ${{ github.event_name }}'
-assert_prepare_contains '          INPUT_BUILD_SCOPE: ${{ inputs.build_scope }}'
-assert_prepare_contains '          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_BUILD_SCOPE}" != "all" && "${INPUT_PUBLISH}" == "true" ]]; then'
 assert_prepare_contains '            publish_mode=prerelease'
 assert_prepare_contains '            publish_mode=dev'
 assert_prepare_contains '          elif [[ "${publish_mode}" == "dev" ]]; then'
@@ -225,9 +223,7 @@ for job in build-linux build-windows build-macos build-ios; do
   condition="$(job_condition "${job}")"
   for requirement in \
     "needs.prepare.outputs.release_needed == 'true'" \
-    "needs.prepare.outputs.publish == 'false'" \
-    "github.event_name != 'workflow_dispatch'" \
-    "inputs.build_scope == 'all'"; do
+    "needs.prepare.outputs.publish == 'false'"; do
     if [[ "${condition}" != *"${requirement}"* ]]; then
       printf '%s must build clients when release assets are needed: missing %s\n' "${job}" "${requirement}" >&2
       exit 1
