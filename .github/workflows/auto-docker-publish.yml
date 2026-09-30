@@ -1,4 +1,4 @@
-name: Auto Docker Publish
+name: Fork Release Build
 
 on:
   schedule:
@@ -29,6 +29,11 @@ on:
         description: "Exact patchset commit to use for development publishing"
         required: false
         default: ""
+      publish:
+        description: "Publish images and a GitHub Release after building"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -61,6 +66,10 @@ jobs:
       patchset_sha: ${{ steps.patchset.outputs.sha }}
       publish_mode: ${{ steps.meta.outputs.publish_mode }}
       publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
+      publish: ${{ steps.publish.outputs.value }}
+      release_needed: ${{ steps.release_status.outputs.needed }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_channel: ${{ steps.meta.outputs.release_channel }}
     steps:
       - name: Checkout patchset
         uses: actions/checkout@v4
@@ -72,6 +81,19 @@ jobs:
         id: patchset
         working-directory: patchset
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve publishing intent
+        id: publish
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" && "${INPUT_PUBLISH}" != "true" ]]; then
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Resolve upstream source ref
         id: upstream_ref
@@ -134,7 +156,7 @@ jobs:
           for patch in "${PATCHES[@]}"; do
             NAME=$(basename "$patch")
             echo "==== Applying: $NAME ===="
-            git am --3way "$patch"
+            git am --3way --committer-date-is-author-date "$patch"
             APPLIED=$((APPLIED + 1))
           done
           echo "Applied ${APPLIED} patch(es)."
@@ -152,11 +174,28 @@ jobs:
             rm -rf .github/workflows
             git add -A .github/workflows
             if ! git diff --cached --quiet; then
-              git commit -m "Drop upstream workflow files from generated patched branch"
+              commit_date="$(git show -s --format=%aI HEAD)"
+              GIT_AUTHOR_DATE="${commit_date}" GIT_COMMITTER_DATE="${commit_date}" \
+                git commit -m "Drop upstream workflow files from generated patched branch"
             fi
           fi
 
+      - name: Archive patched source for a dry run
+        if: steps.publish.outputs.value == 'false'
+        working-directory: source
+        run: tar --exclude=.git -czf "${RUNNER_TEMP}/patched-source.tar.gz" .
+
+      - name: Upload patched source for a dry run
+        if: steps.publish.outputs.value == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-source
+          path: ${{ runner.temp }}/patched-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Update patched branch
+        if: steps.publish.outputs.value == 'true'
         working-directory: source
         run: |
           set -euo pipefail
@@ -174,11 +213,12 @@ jobs:
           SOURCE_SHA: ${{ steps.source_identity.outputs.sha }}
         run: |
           set -euo pipefail
-          if [[ -n "${INPUT_PASEO_VERSION}" ]]; then
-            version="${INPUT_PASEO_VERSION}"
-          else
-            version="$(node -p "require('./package.json').version")"
+          source_version="$(node -p "require('./package.json').version")"
+          if [[ -n "${INPUT_PASEO_VERSION}" && "${INPUT_PASEO_VERSION}" != "${source_version}" ]]; then
+            printf 'paseo_version input (%s) must match source/package.json version (%s)\n' "${INPUT_PASEO_VERSION}" "${source_version}" >&2
+            exit 1
           fi
+          version="${source_version}"
           owner="$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')"
           patched_sha="$(git rev-parse HEAD)"
           source_sha="${SOURCE_SHA}"
@@ -187,8 +227,67 @@ jobs:
           echo "patched_sha=${patched_sha}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          release_tag="v${version}-source-${source_sha}"
+          if [[ "${PUBLISH_MODE}" != "release" ]]; then
+            release_tag="${release_tag}-${PUBLISH_MODE}"
+          fi
+          if [[ "${version}" == *-* ]]; then
+            release_channel=beta
+          else
+            release_channel=latest
+          fi
           echo "publish_mode=${PUBLISH_MODE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} upstream_sha=${UPSTREAM_SHA} patched_sha=${patched_sha} publish_mode=${PUBLISH_MODE}"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} upstream_sha=${UPSTREAM_SHA} patched_sha=${patched_sha} publish_mode=${PUBLISH_MODE} release_tag=${release_tag} release_channel=${release_channel}"
+
+      - name: Create immutable release source tag
+        if: steps.publish.outputs.value == 'true'
+        working-directory: source
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git remote add our-fork "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" || true
+          if git ls-remote --exit-code --tags our-fork "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Using existing immutable release source tag ${RELEASE_TAG}."
+          else
+            git tag -a "${RELEASE_TAG}" -m "Paseo patched source ${RELEASE_TAG}"
+            git push our-fork "refs/tags/${RELEASE_TAG}"
+          fi
+
+      - name: Check fork release status
+        id: release_status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.meta.outputs.release_channel }}
+        run: |
+          set -euo pipefail
+          needed=true
+          if assets="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' 2>/dev/null)"; then
+            if grep -Fxq "Paseo-Setup-${VERSION}-x64.exe" <<<"${assets}" \
+              && grep -Fxq "Paseo-Setup-${VERSION}-x64.zip" <<<"${assets}" \
+              && grep -Fxq "Paseo-Setup-${VERSION}-arm64.exe" <<<"${assets}" \
+              && grep -Fxq "Paseo-Setup-${VERSION}-arm64.zip" <<<"${assets}" \
+              && grep -Fxq "${RELEASE_CHANNEL}.yml" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-x64.dmg" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-x64.zip" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-arm64.dmg" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-arm64.zip" <<<"${assets}" \
+              && grep -Fxq "${RELEASE_CHANNEL}-mac.yml" <<<"${assets}" \
+              && grep -Fxq "Paseo-x86_64.AppImage" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-amd64.deb" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-x86_64.rpm" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-x64.tar.gz" <<<"${assets}" \
+              && grep -Fxq "${RELEASE_CHANNEL}-linux.yml" <<<"${assets}" \
+              && grep -Fxq "Paseo-${VERSION}-ios-unsigned.ipa" <<<"${assets}"; then
+              needed=false
+            fi
+          fi
+          echo "needed=${needed}" >> "$GITHUB_OUTPUT"
+          echo "Fork release ${RELEASE_TAG} needs client assets: ${needed}"
 
       - name: Check source image status
         id: source_image_status
@@ -232,7 +331,7 @@ jobs:
           echo "Source image publish needed for ${PUBLISH_MODE}: ${publish_source_images}"
 
   publish-source-image:
-    if: needs.prepare.outputs.publish_source_images == 'true'
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.publish_source_images == 'true'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish ${{ matrix.image.name }}
@@ -317,7 +416,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.cache_scope }},mode=max
 
   publish-mod-images:
-    if: needs.prepare.outputs.publish_mode != 'dev'
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.publish_mode != 'dev'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish mod ${{ matrix.agent }}
@@ -443,3 +542,347 @@ jobs:
       - name: Skip unchanged mod image
         if: steps.mod.outputs.should_build != 'true'
         run: echo "No publish needed for ${{ matrix.agent }}; package version ${{ steps.mod.outputs.package_version }} is already present."
+
+  build-linux:
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Checkout patched source
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patched_sha }}
+          path: source
+          fetch-depth: 0
+
+      - name: Download patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-source
+          path: source
+
+      - name: Extract patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Install Linux desktop build dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Build Linux desktop artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_GH_IGNORE_TIME: true
+          PASEO_DESKTOP_SMOKE: "1"
+        run: npm run build:desktop -- --publish never --linux --x64
+
+      - name: Upload Linux desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: source/packages/desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Checkout patched source
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patched_sha }}
+          path: source
+          fetch-depth: 0
+
+      - name: Download patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-source
+          path: source
+
+      - name: Extract patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build Windows desktop artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_GH_IGNORE_TIME: true
+          PASEO_DESKTOP_SMOKE: "1"
+        run: npm run build:desktop -- --publish never --win --x64 --arm64
+
+      - name: Upload Windows desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: source/packages/desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            electron_arch: arm64
+          - runner: macos-15-intel
+            electron_arch: x64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Checkout patched source
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patched_sha }}
+          path: source
+          fetch-depth: 0
+
+      - name: Download patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-source
+          path: source
+
+      - name: Extract patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build unsigned macOS desktop artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_GH_IGNORE_TIME: true
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: >
+          npm run build:desktop -- --publish never --mac --${{ matrix.electron_arch }}
+          -c.mac.identity=null
+          -c.mac.notarize=false
+
+      - name: Upload macOS desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-${{ matrix.electron_arch }}-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: source/packages/desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-ios:
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    runs-on: macos-14
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - name: Checkout patched source
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patched_sha }}
+          path: source
+          fetch-depth: 0
+
+      - name: Download patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-source
+          path: source
+
+      - name: Extract patched source for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: tar -xzf patched-source.tar.gz
+
+      - name: Initialize Git metadata for a dry run
+        if: needs.prepare.outputs.publish == 'false'
+        run: git init --quiet
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Select supported Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Build unsigned iOS IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:app-deps
+          (
+            cd packages/app
+            APP_VARIANT=production npx expo prebuild --platform ios --clean --non-interactive
+            xcodebuild \
+              -workspace ios/Paseo.xcworkspace \
+              -scheme Paseo \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath ios/build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              build
+          )
+          app_path="packages/app/ios/build/Build/Products/Release-iphoneos/Paseo.app"
+          test -d "${app_path}"
+          mkdir -p Payload
+          cp -R "${app_path}" Payload/Paseo.app
+          ditto -c -k --sequesterRsrc --keepParent Payload "Paseo-${{ needs.prepare.outputs.version }}-ios-unsigned.ipa"
+
+      - name: Upload unsigned iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ios-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.source_sha }}
+          path: source/Paseo-${{ needs.prepare.outputs.version }}-ios-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]
+    if: >
+      always() &&
+      needs.prepare.outputs.publish == 'true' &&
+      needs.prepare.outputs.release_needed == 'true' &&
+      (needs.publish-source-image.result == 'success' || needs.publish-source-image.result == 'skipped') &&
+      needs.build-linux.result == 'success' &&
+      needs.build-windows.result == 'success' &&
+      needs.build-macos.result == 'success' &&
+      needs.build-ios.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Download client artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+
+      - name: Checkout release asset preparation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patchset_sha }}
+          path: release-policy
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release asset dependency
+        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"
+
+      - name: Prepare release assets
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+        run: >
+          python3 release-policy/scripts/prepare-release-assets.py
+          --artifacts artifacts
+          --output release-assets
+          --version "${VERSION}"
+          --channel "${RELEASE_CHANNEL}"
+
+      - name: Publish fork GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare.outputs.release_tag }}"
+          prerelease_flag=()
+          image_tag="${VERSION}-${SOURCE_SHA}"
+          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
+            image_tag="dev-${UPSTREAM_SHA}-source-${SOURCE_SHA}"
+          fi
+          if [[ "${PUBLISH_MODE}" != "release" ]]; then
+            prerelease_flag=(--prerelease)
+          fi
+          notes="$(printf 'Built from upstream %s with patch source %s.\n\nGHCR: ghcr.io/%s/paseo:%s' "${UPSTREAM_SHA}" "${SOURCE_SHA}" "${IMAGE_OWNER}" "${image_tag}")"
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${tag}" release-assets/* --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "${tag}" release-assets/* --repo "${GITHUB_REPOSITORY}" --title "Paseo ${VERSION}" --notes "${notes}" "${prerelease_flag[@]}"
+          fi

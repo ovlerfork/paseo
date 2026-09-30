@@ -26,10 +26,10 @@ jobs:
   apply-and-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout patchset branch
+      - name: Checkout patchset revision
         uses: actions/checkout@v4
         with:
-          ref: patchset
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: patchset
 
       - name: Record exact patchset SHA
@@ -66,7 +66,7 @@ jobs:
           for patch in "${PATCHES[@]}"; do
             NAME=$(basename "$patch")
             echo "==== Applying: $NAME ===="
-            if ! git am --3way "$patch"; then
+            if ! git am --3way --committer-date-is-author-date "$patch"; then
               FAILED="$NAME"
               break
             fi
@@ -113,6 +113,7 @@ jobs:
           set -euo pipefail
           bash tests/auto-docker-publish-policy.test.sh
           bash tests/auto-docker-publish-layout.test.sh
+          bash tests/check-no-upstream-refs.test.sh
 
       - name: Dispatch development image publish
         if: steps.apply.outputs.status == 'ok' && inputs.publish_dev == true
