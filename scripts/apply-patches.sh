@@ -22,7 +22,7 @@ APPLIED=0
 for patch in "${PATCHES[@]}"; do
   NAME="$(basename "$patch")"
   echo "==== Applying: $NAME ===="
-  if ! git am --3way "$patch"; then
+  if ! git am --3way --committer-date-is-author-date "$patch"; then
     echo ""
     echo "FAILED: $NAME"
     echo ""

@@ -1,0 +1,1654 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 06:51:18 +0000
+Subject: [PATCH] Add shared project groups to the sidebar
+
+
+diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
+index 4902a3a..4fe51fc 100644
+--- a/packages/app/src/components/left-sidebar.tsx
++++ b/packages/app/src/components/left-sidebar.tsx
+@@ -67,6 +67,7 @@ interface SidebarSharedProps {
+   projectIconTargets: SidebarProjectIconTarget[];
+   pinnedGroups: PinnedSidebarGroups;
+   projects: SidebarProjectEntry[];
++  allProjects: SidebarProjectEntry[];
+   hasProjectsBeforeFilter: boolean;
+   hasActiveProjectFilter: boolean;
+   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
+@@ -116,6 +117,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
+ 
+   const {
+     projects,
++    allProjects,
+     hasProjectsBeforeFilter,
+     resolvedProjectFilters,
+     workspaceEntriesByKey,
+@@ -210,6 +212,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
+     projectIconTargets,
+     pinnedGroups,
+     projects,
++    allProjects,
+     hasProjectsBeforeFilter,
+     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
+     workspaceEntriesByKey,
+@@ -534,6 +537,7 @@ function MobileSidebar({
+   projectIconTargets,
+   pinnedGroups,
+   projects,
++  allProjects,
+   hasProjectsBeforeFilter,
+   hasActiveProjectFilter,
+   workspaceEntriesByKey,
+@@ -612,6 +616,7 @@ function MobileSidebar({
+             projectIconTargets={projectIconTargets}
+             pinnedGroups={pinnedGroups}
+             projects={projects}
++            allProjects={allProjects}
+             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
+             hasActiveProjectFilter={hasActiveProjectFilter}
+             workspaceEntriesByKey={workspaceEntriesByKey}
+@@ -646,6 +651,7 @@ function DesktopSidebar({
+   projectIconTargets,
+   pinnedGroups,
+   projects,
++  allProjects,
+   hasProjectsBeforeFilter,
+   hasActiveProjectFilter,
+   workspaceEntriesByKey,
+@@ -790,6 +796,7 @@ function DesktopSidebar({
+             projectIconTargets={projectIconTargets}
+             pinnedGroups={pinnedGroups}
+             projects={projects}
++            allProjects={allProjects}
+             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
+             hasActiveProjectFilter={hasActiveProjectFilter}
+             workspaceEntriesByKey={workspaceEntriesByKey}
+diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
+new file mode 100644
+index 0000000..3e3285f
+--- /dev/null
++++ b/packages/app/src/components/project-groups-sheet.test.tsx
+@@ -0,0 +1,188 @@
++import { JSDOM } from "jsdom";
++import React from "react";
++import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++interface ButtonMockProps {
++  children?: React.ReactNode;
++  onPress?: () => void;
++  disabled?: boolean;
++  testID?: string;
++}
++
++interface AdaptiveModalSheetMockProps {
++  visible: boolean;
++  children?: React.ReactNode;
++  footer?: React.ReactNode;
++}
++
++interface AdaptiveTextInputMockProps {
++  initialValue: string;
++  testID?: string;
++}
++
++interface FieldMockProps {
++  children?: React.ReactNode;
++  error?: string | null;
++}
++
++function PressableMock({ children, onPress, disabled, testID }: ButtonMockProps) {
++  return (
++    <button type="button" data-testid={testID} disabled={disabled} onClick={onPress}>
++      {children}
++    </button>
++  );
++}
++
++function AdaptiveModalSheetMock({ visible, children, footer }: AdaptiveModalSheetMockProps) {
++  return visible ? (
++    <div>
++      {children}
++      {footer}
++    </div>
++  ) : null;
++}
++
++function AdaptiveTextInputMock({ initialValue, testID }: AdaptiveTextInputMockProps) {
++  return <input data-testid={testID} defaultValue={initialValue} />;
++}
++
++function ButtonMock({ children, onPress, disabled }: ButtonMockProps) {
++  return (
++    <button type="button" disabled={disabled} onClick={onPress}>
++      {children}
++    </button>
++  );
++}
++
++function FieldMock({ children, error }: FieldMockProps) {
++  return (
++    <div>
++      {children}
++      {error ? <span>{error}</span> : null}
++    </div>
++  );
++}
++
++vi.mock("react-native", () => ({
++  View: "div",
++  Text: "span",
++  ScrollView: "div",
++  Pressable: PressableMock,
++}));
++vi.mock("react-native-unistyles", () => ({
++  StyleSheet: {
++    create: (factory: (theme: object) => object) =>
++      factory({
++        spacing: { 1: 4, 2: 8, 3: 12 },
++        colors: {
++          foreground: "#000",
++          foregroundMuted: "#666",
++          border: "#ccc",
++          accent: "#06f",
++          accentForeground: "#fff",
++        },
++        fontSize: { sm: 12, base: 14 },
++      }),
++  },
++}));
++vi.mock("@/components/adaptive-modal-sheet", () => ({
++  AdaptiveModalSheet: AdaptiveModalSheetMock,
++  AdaptiveTextInput: AdaptiveTextInputMock,
++}));
++vi.mock("@/components/ui/button", () => ({ Button: ButtonMock }));
++vi.mock("@/components/ui/form-field", () => ({ Field: FieldMock }));
++vi.mock("@/utils/confirm-dialog", () => ({ confirmDialog: vi.fn() }));
++const { setProjectGroup } = vi.hoisted(() => ({ setProjectGroup: vi.fn() }));
++
++vi.mock("@/runtime/host-runtime", () => ({
++  getHostRuntimeStore: () => ({ getClient: () => ({ setProjectGroup }) }),
++}));
++
++import { ProjectGroupsSheet } from "./project-groups-sheet";
++
++beforeEach(() => {
++  setProjectGroup.mockReset();
++  const dom = new JSDOM("<!doctype html><html><body></body></html>");
++  vi.stubGlobal("window", dom.window);
++  vi.stubGlobal("document", dom.window.document);
++  vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
++  vi.stubGlobal("Node", dom.window.Node);
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++});
++
++afterEach(() => {
++  cleanup();
++  vi.unstubAllGlobals();
++});
++
++const project = {
++  viewKey: "one",
++  projectName: "One",
++  groupName: null,
++  hosts: [
++    {
++      serverId: "host",
++      projectId: "project",
++      iconWorkingDir: "/repo",
++      worktreeSupport: "supported" as const,
++    },
++  ],
++  workspaces: [],
++  projectKind: "git" as const,
++  iconWorkingDir: "/repo",
++};
++
++describe("ProjectGroupsSheet", () => {
++  it("starts a new group without selecting existing ungrouped projects", () => {
++    const view = render(
++      <ProjectGroupsSheet
++        visible
++        projects={[project]}
++        capableHosts={new Map([["host", true]])}
++        initialGroupName={null}
++        onClose={vi.fn()}
++      />,
++    );
++    expect(view.getByTestId("project-group-project-one").textContent).not.toContain("✓");
++  });
++});
++
++it("keeps an in-progress selection when project descriptors update", () => {
++  const props = {
++    visible: true,
++    capableHosts: new Map([["host", true]]),
++    initialGroupName: null,
++    onClose: vi.fn(),
++  };
++  const view = render(<ProjectGroupsSheet {...props} projects={[project]} />);
++  const member = view.getByTestId("project-group-project-one");
++  fireEvent.click(member);
++  expect(member.textContent).toContain("✓");
++
++  view.rerender(
++    <ProjectGroupsSheet {...props} projects={[{ ...project, projectName: "One updated" }]} />,
++  );
++
++  expect(view.getByTestId("project-group-project-one").textContent).toContain("✓");
++});
++
++it("clears the final membership when saving an existing group", async () => {
++  const onClose = vi.fn();
++  const groupedProject = { ...project, groupName: "Clients" };
++  const view = render(
++    <ProjectGroupsSheet
++      visible
++      projects={[groupedProject]}
++      capableHosts={new Map([["host", true]])}
++      initialGroupName="Clients"
++      onClose={onClose}
++    />,
++  );
++
++  fireEvent.click(view.getByTestId("project-group-project-one"));
++  fireEvent.click(view.getByText("Save"));
++
++  await waitFor(() => expect(setProjectGroup).toHaveBeenCalledWith("project", null));
++  expect(onClose).toHaveBeenCalledOnce();
++});
+diff --git a/packages/app/src/components/project-groups-sheet.tsx b/packages/app/src/components/project-groups-sheet.tsx
+new file mode 100644
+index 0000000..dba27f0
+--- /dev/null
++++ b/packages/app/src/components/project-groups-sheet.tsx
+@@ -0,0 +1,334 @@
++import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import { ScrollView, Text, View, Pressable } from "react-native";
++import { StyleSheet } from "react-native-unistyles";
++import {
++  AdaptiveModalSheet,
++  AdaptiveTextInput,
++  type SheetHeader,
++} from "@/components/adaptive-modal-sheet";
++import { Button } from "@/components/ui/button";
++import { Field } from "@/components/ui/form-field";
++import { confirmDialog } from "@/utils/confirm-dialog";
++import { getHostRuntimeStore } from "@/runtime/host-runtime";
++import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
++
++export interface ProjectGroupsSheetProps {
++  visible: boolean;
++  projects: readonly SidebarProjectEntry[];
++  capableHosts: ReadonlyMap<string, boolean>;
++  initialGroupName: string | null;
++  onClose: () => void;
++}
++
++/** Edits one named group at a time; persistence stays with each owning host project. */
++export function ProjectGroupsSheet({
++  visible,
++  projects,
++  capableHosts,
++  initialGroupName,
++  onClose,
++}: ProjectGroupsSheetProps) {
++  const initialMembers = useMemo(
++    () =>
++      new Set(
++        initialGroupName === null
++          ? []
++          : projects
++              .filter((project) => project.groupName === initialGroupName)
++              .map((project) => project.viewKey),
++      ),
++    [initialGroupName, projects],
++  );
++  const [name, setName] = useState(initialGroupName ?? "");
++  const [members, setMembers] = useState(initialMembers);
++  const [error, setError] = useState<string | null>(null);
++  const [saving, setSaving] = useState(false);
++  const initializedEditorKey = useRef<string | null>(null);
++
++  useEffect(() => {
++    if (!visible) {
++      initializedEditorKey.current = null;
++      return;
++    }
++    const editorKey = initialGroupName ?? "new";
++    if (initializedEditorKey.current === editorKey) return;
++    initializedEditorKey.current = editorKey;
++    setName(initialGroupName ?? "");
++    setMembers(initialMembers);
++    setError(null);
++  }, [initialGroupName, initialMembers, visible]);
++
++  const editable = useCallback(
++    (project: SidebarProjectEntry) =>
++      project.hosts.every((host) => capableHosts.get(host.serverId) === true),
++    [capableHosts],
++  );
++  const selectedProjects = useMemo(
++    () => projects.filter((project) => members.has(project.viewKey)),
++    [members, projects],
++  );
++  const existingMembers = useMemo(
++    () => projects.filter((project) => project.groupName === initialGroupName),
++    [initialGroupName, projects],
++  );
++  const header = useMemo<SheetHeader>(
++    () => ({ title: initialGroupName ? "Edit project group" : "New project group" }),
++    [initialGroupName],
++  );
++
++  const toggleMember = useCallback((project: SidebarProjectEntry) => {
++    setMembers((current) => {
++      const next = new Set(current);
++      if (next.has(project.viewKey)) next.delete(project.viewKey);
++      else next.add(project.viewKey);
++      return next;
++    });
++  }, []);
++
++  const save = useCallback(async () => {
++    const trimmedName = name.trim();
++    if (!trimmedName) {
++      setError("Enter a group name.");
++      return;
++    }
++    if (initialGroupName === null && selectedProjects.length === 0) {
++      setError("Select at least one project.");
++      return;
++    }
++    const changed = new Map<string, string | null>();
++    for (const project of selectedProjects) changed.set(project.viewKey, trimmedName);
++    for (const project of existingMembers)
++      if (!members.has(project.viewKey)) changed.set(project.viewKey, null);
++    const targets = projects.filter((project) => changed.has(project.viewKey));
++    if (targets.some((project) => !editable(project))) {
++      setError("Update every host for the selected projects before changing this group.");
++      return;
++    }
++    setSaving(true);
++    setError(null);
++    const failures: string[] = [];
++    await Promise.all(
++      targets.flatMap((project) =>
++        project.hosts.map(async (host) => {
++          try {
++            const client = getHostRuntimeStore().getClient(host.serverId);
++            if (!client) throw new Error("Host is disconnected");
++            await client.setProjectGroup(host.projectId, changed.get(project.viewKey) ?? null);
++          } catch {
++            failures.push(project.projectName);
++          }
++        }),
++      ),
++    );
++    setSaving(false);
++    if (failures.length > 0) {
++      setError(
++        `Could not update ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
++      );
++      return;
++    }
++    onClose();
++  }, [
++    editable,
++    existingMembers,
++    initialGroupName,
++    members,
++    name,
++    onClose,
++    projects,
++    selectedProjects,
++  ]);
++
++  const remove = useCallback(async () => {
++    if (existingMembers.some((project) => !editable(project))) {
++      setError("Update every host for this group before deleting it.");
++      return;
++    }
++    if (
++      existingMembers.some((project) =>
++        project.hosts.some((host) => getHostRuntimeStore().getClient(host.serverId) === null),
++      )
++    ) {
++      setError("Reconnect every host for this group before deleting it.");
++      return;
++    }
++    const confirmed = await confirmDialog({
++      title: "Delete project group?",
++      message: `Projects will remain available outside ${initialGroupName}.`,
++      confirmLabel: "Delete group",
++      cancelLabel: "Cancel",
++      destructive: true,
++    });
++    if (!confirmed) return;
++    setMembers(new Set());
++    setName("");
++    setSaving(true);
++    const failures: string[] = [];
++    await Promise.all(
++      existingMembers.flatMap((project) =>
++        project.hosts.map(async (host) => {
++          try {
++            const client = getHostRuntimeStore().getClient(host.serverId);
++            if (!client) throw new Error("Host is disconnected");
++            await client.setProjectGroup(host.projectId, null);
++          } catch {
++            failures.push(project.projectName);
++          }
++        }),
++      ),
++    );
++    setSaving(false);
++    if (failures.length) {
++      setError(
++        `Could not delete this group from ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
++      );
++      return;
++    }
++    onClose();
++  }, [editable, existingMembers, initialGroupName, onClose]);
++
++  const canDelete =
++    initialGroupName !== null &&
++    existingMembers.every(
++      (project) =>
++        editable(project) &&
++        project.hosts.every((host) => getHostRuntimeStore().getClient(host.serverId) !== null),
++    );
++
++  const handleRemove = useCallback(() => {
++    void remove();
++  }, [remove]);
++  const handleSave = useCallback(() => {
++    void save();
++  }, [save]);
++  const footer = useMemo(
++    () => (
++      <View style={styles.footer}>
++        {initialGroupName ? (
++          <Button
++            variant="outline"
++            size="md"
++            onPress={handleRemove}
++            disabled={saving || !canDelete}
++          >
++            Delete
++          </Button>
++        ) : null}
++        <View style={styles.footerSpacer} />
++        <Button variant="secondary" size="md" onPress={onClose} disabled={saving}>
++          Cancel
++        </Button>
++        <Button variant="default" size="md" onPress={handleSave} loading={saving}>
++          Save
++        </Button>
++      </View>
++    ),
++    [canDelete, handleRemove, handleSave, initialGroupName, onClose, saving],
++  );
++
++  return (
++    <AdaptiveModalSheet
++      visible={visible}
++      onClose={onClose}
++      header={header}
++      footer={footer}
++      desktopMaxWidth={440}
++      testID="project-groups-sheet"
++    >
++      <Field label="Group name" error={error}>
++        <AdaptiveTextInput
++          testID="project-group-name"
++          initialValue={name}
++          onChangeText={setName}
++          editable={!saving}
++          placeholder="Projects"
++        />
++      </Field>
++      <Text style={styles.label}>Projects</Text>
++      <ScrollView style={styles.projects} contentContainerStyle={styles.projectsContent}>
++        {projects.map((project) => (
++          <ProjectGroupMemberRow
++            key={project.viewKey}
++            project={project}
++            enabled={editable(project)}
++            selected={members.has(project.viewKey)}
++            saving={saving}
++            onToggle={toggleMember}
++          />
++        ))}
++      </ScrollView>
++    </AdaptiveModalSheet>
++  );
++}
++
++function ProjectGroupMemberRow({
++  project,
++  enabled,
++  selected,
++  saving,
++  onToggle,
++}: {
++  project: SidebarProjectEntry;
++  enabled: boolean;
++  selected: boolean;
++  saving: boolean;
++  onToggle: (project: SidebarProjectEntry) => void;
++}) {
++  const handlePress = useCallback(() => onToggle(project), [onToggle, project]);
++  const accessibilityState = useMemo(
++    () => ({ checked: selected, disabled: !enabled }),
++    [enabled, selected],
++  );
++  return (
++    <Pressable
++      testID={`project-group-project-${project.viewKey}`}
++      accessibilityRole="checkbox"
++      accessibilityState={accessibilityState}
++      disabled={!enabled || saving}
++      onPress={handlePress}
++      style={styles.projectRow}
++    >
++      <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
++        {selected ? <Text style={styles.checkmark}>✓</Text> : null}
++      </View>
++      <Text style={[styles.projectName, !enabled && styles.projectNameDisabled]} numberOfLines={1}>
++        {project.projectName}
++      </Text>
++    </Pressable>
++  );
++}
++
++const styles = StyleSheet.create((theme) => ({
++  footer: { flexDirection: "row", gap: theme.spacing[2], alignItems: "center" },
++  footerSpacer: { flex: 1 },
++  label: {
++    color: theme.colors.foreground,
++    fontSize: theme.fontSize.base,
++    fontWeight: "500",
++    marginTop: theme.spacing[3],
++    marginBottom: theme.spacing[2],
++  },
++  projects: { maxHeight: 300 },
++  projectsContent: { gap: theme.spacing[1] },
++  projectRow: {
++    minHeight: 40,
++    flexDirection: "row",
++    alignItems: "center",
++    gap: theme.spacing[2],
++    paddingHorizontal: theme.spacing[2],
++    borderRadius: 6,
++  },
++  checkbox: {
++    width: 20,
++    height: 20,
++    borderWidth: 1,
++    borderColor: theme.colors.border,
++    borderRadius: 4,
++    alignItems: "center",
++    justifyContent: "center",
++  },
++  checkboxSelected: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
++  checkmark: { color: theme.colors.accentForeground, fontWeight: "700" },
++  projectName: { color: theme.colors.foreground, fontSize: theme.fontSize.base, flex: 1 },
++  projectNameDisabled: { color: theme.colors.foregroundMuted },
++}));
+diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
+index 4275099..ffcdd6f 100644
+--- a/packages/app/src/components/sidebar-workspace-list.tsx
++++ b/packages/app/src/components/sidebar-workspace-list.tsx
+@@ -1,4 +1,5 @@
+ import { LoadingSpinner } from "@/components/ui/loading-spinner";
++import { Button } from "@/components/ui/button";
+ import {
+   View,
+   Text,
+@@ -151,6 +152,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
+ import { useHostBadges } from "@/hosts/use-host-badges";
+ import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
+ import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
++import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
+ 
+ const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
+ 
+@@ -216,6 +218,7 @@ interface SidebarWorkspaceListProps {
+   projectIconTargets: SidebarProjectIconTarget[];
+   pinnedGroups: PinnedSidebarGroups;
+   projects: SidebarProjectEntry[];
++  allProjects: SidebarProjectEntry[];
+   hasProjectsBeforeFilter: boolean;
+   /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
+   hasActiveProjectFilter: boolean;
+@@ -238,6 +241,39 @@ interface SidebarWorkspaceListProps {
+   dragGestureHostActive?: boolean;
+ }
+ 
++interface ProjectGroupHeaderProps {
++  groupName: string;
++  projectCount: number;
++  onToggle: (groupName: string) => void;
++  onEdit: (groupName: string) => void;
++}
++
++const ProjectGroupHeader = memo(function ProjectGroupHeader({
++  groupName,
++  projectCount,
++  onToggle,
++  onEdit,
++}: ProjectGroupHeaderProps) {
++  const handleToggle = useCallback(() => onToggle(groupName), [groupName, onToggle]);
++  const handleEdit = useCallback(() => onEdit(groupName), [groupName, onEdit]);
++
++  return (
++    <>
++      <Pressable
++        accessibilityRole="button"
++        onPress={handleToggle}
++        style={styles.projectGroupHeader}
++      >
++        <Text style={styles.projectGroupTitle}>{groupName}</Text>
++        <Text style={styles.projectGroupCount}>{projectCount}</Text>
++      </Pressable>
++      <Button variant="ghost" size="xs" onPress={handleEdit}>
++        Edit
++      </Button>
++    </>
++  );
++});
++
+ interface ProjectHeaderRowProps {
+   project: SidebarProjectEntry;
+   displayName: string;
+@@ -1886,6 +1922,7 @@ export function SidebarWorkspaceList({
+   projectIconTargets,
+   pinnedGroups,
+   projects,
++  allProjects,
+   hasProjectsBeforeFilter,
+   hasActiveProjectFilter,
+   workspaceEntriesByKey,
+@@ -1983,6 +2020,7 @@ export function SidebarWorkspaceList({
+     ) : (
+       <ProjectModeList
+         projects={projects}
++        allProjects={allProjects}
+         pinnedGroups={pinnedGroups}
+         workspaceEntriesByKey={workspaceEntriesByKey}
+         projectIconByProjectViewKey={projectIconByProjectViewKey}
+@@ -2079,6 +2117,7 @@ function SidebarGroupedModeList({
+ 
+ function ProjectModeList({
+   projects,
++  allProjects,
+   pinnedGroups,
+   workspaceEntriesByKey,
+   projectIconByProjectViewKey,
+@@ -2120,6 +2159,15 @@ function ProjectModeList({
+   onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
+ }) {
+   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
++  const [editingGroupName, setEditingGroupName] = useState<string | null | undefined>(undefined);
++  const groupHostIds = useMemo(
++    () =>
++      Array.from(
++        new Set(allProjects.flatMap((project) => project.hosts.map((host) => host.serverId))),
++      ),
++    [allProjects],
++  );
++  const supportsProjectGroupsByServerId = useHostFeatureMap(groupHostIds, "projectGroups");
+   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
+   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+     new Map(),
+@@ -2394,24 +2442,76 @@ function ProjectModeList({
+     ],
+   );
+ 
++  const groupedProjects = useMemo(() => {
++    const groups = new Map<string, SidebarProjectEntry[]>();
++    const ungrouped: SidebarProjectEntry[] = [];
++    for (const project of unpinnedProjects) {
++      if (!project.groupName) ungrouped.push(project);
++      else {
++        const entries = groups.get(project.groupName) ?? [];
++        entries.push(project);
++        groups.set(project.groupName, entries);
++      }
++    }
++    return { groups, ungrouped };
++  }, [unpinnedProjects]);
++  const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
++  const toggleGroup = useCallback((groupName: string) => {
++    setCollapsedGroupNames((current) => {
++      const next = new Set(current);
++      if (next.has(groupName)) next.delete(groupName);
++      else next.add(groupName);
++      return next;
++    });
++  }, []);
++  const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
++  const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
++  const editProjectGroup = useCallback((groupName: string) => setEditingGroupName(groupName), []);
+   const projectBody =
+     projects.length === 0 ? (
+       <SidebarProjectEmptyState onAddProject={onAddProject} onImportSession={onImportSession} />
+     ) : (
+-      <DraggableList
+-        testID="sidebar-project-list"
+-        data={unpinnedProjects}
+-        keyExtractor={projectViewKeyExtractor}
+-        renderItem={renderProject}
+-        onDragEnd={handleProjectDragEnd}
+-        extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
+-        scrollEnabled={false}
+-        useDragHandle
+-        nestable={platformIsNative}
+-        simultaneousGestureRef={parentGestureRef}
+-        gestureHostPresented={dragGestureHostActive}
+-        containerStyle={styles.projectListContainer}
+-      />
++      <>
++        {groupHostIds.some((serverId) => supportsProjectGroupsByServerId.get(serverId) === true) ? (
++          <Button
++            variant="ghost"
++            size="sm"
++            onPress={openNewProjectGroup}
++            testID="sidebar-create-project-group"
++          >
++            New group
++          </Button>
++        ) : null}
++        {Array.from(groupedProjects.groups.entries()).map(([groupName, groupProjects]) => (
++          <View key={groupName} style={styles.projectGroupBlock}>
++            <ProjectGroupHeader
++              groupName={groupName}
++              projectCount={groupProjects.length}
++              onToggle={toggleGroup}
++              onEdit={editProjectGroup}
++            />
++            {!collapsedGroupNames.has(groupName)
++              ? groupProjects.map((project) =>
++                  renderProjectBlock(project, { drag: () => {}, isDragging: false }),
++                )
++              : null}
++          </View>
++        ))}
++        <DraggableList
++          testID="sidebar-project-list"
++          data={groupedProjects.ungrouped}
++          keyExtractor={projectViewKeyExtractor}
++          renderItem={renderProject}
++          onDragEnd={handleProjectDragEnd}
++          extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
++          scrollEnabled={false}
++          useDragHandle
++          nestable={platformIsNative}
++          simultaneousGestureRef={parentGestureRef}
++          gestureHostPresented={dragGestureHostActive}
++          containerStyle={styles.projectListContainer}
++        />
++      </>
+     );
+ 
+   const content = (
+@@ -2464,28 +2564,37 @@ function ProjectModeList({
+   );
+ 
+   return (
+-    <View style={styles.container}>
+-      {platformIsNative ? (
+-        <NestableScrollContainer
+-          {...nativeScrollGestureProps}
+-          style={styles.list}
+-          contentContainerStyle={styles.listContent}
+-          showsVerticalScrollIndicator={false}
+-          testID="sidebar-project-workspace-list-scroll"
+-        >
+-          {content}
+-        </NestableScrollContainer>
+-      ) : (
+-        <ScrollView
+-          style={styles.list}
+-          contentContainerStyle={styles.listContent}
+-          showsVerticalScrollIndicator={false}
+-          testID="sidebar-project-workspace-list-scroll"
+-        >
+-          {content}
+-        </ScrollView>
+-      )}
+-    </View>
++    <>
++      <ProjectGroupsSheet
++        visible={editingGroupName !== undefined}
++        initialGroupName={editingGroupName ?? null}
++        projects={allProjects}
++        capableHosts={supportsProjectGroupsByServerId}
++        onClose={closeProjectGroupsSheet}
++      />
++      <View style={styles.container}>
++        {platformIsNative ? (
++          <NestableScrollContainer
++            {...nativeScrollGestureProps}
++            style={styles.list}
++            contentContainerStyle={styles.listContent}
++            showsVerticalScrollIndicator={false}
++            testID="sidebar-project-workspace-list-scroll"
++          >
++            {content}
++          </NestableScrollContainer>
++        ) : (
++          <ScrollView
++            style={styles.list}
++            contentContainerStyle={styles.listContent}
++            showsVerticalScrollIndicator={false}
++            testID="sidebar-project-workspace-list-scroll"
++          >
++            {content}
++          </ScrollView>
++        )}
++      </View>
++    </>
+   );
+ }
+ 
+@@ -2506,6 +2615,20 @@ const styles = StyleSheet.create((theme) => ({
+   projectListContainer: {
+     width: "100%",
+   },
++  projectGroupBlock: { marginBottom: theme.spacing[2] },
++  projectGroupHeader: {
++    minHeight: 32,
++    flexDirection: "row",
++    alignItems: "center",
++    paddingHorizontal: theme.spacing[2],
++  },
++  projectGroupTitle: {
++    color: theme.colors.foreground,
++    fontSize: theme.fontSize.sm,
++    fontWeight: "500",
++    flex: 1,
++  },
++  projectGroupCount: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+   pinnedSection: {
+     marginBottom: theme.spacing[1],
+   },
+diff --git a/packages/app/src/hooks/sidebar-workspaces-view-model.ts b/packages/app/src/hooks/sidebar-workspaces-view-model.ts
+index 842844c..9b21ce5 100644
+--- a/packages/app/src/hooks/sidebar-workspaces-view-model.ts
++++ b/packages/app/src/hooks/sidebar-workspaces-view-model.ts
+@@ -59,6 +59,7 @@ export interface SidebarProjectEntry {
+   projectName: string;
+   projectKind: WorkspaceStructureProject["projectKind"];
+   iconWorkingDir: string;
++  groupName?: string | null;
+   hosts: WorkspaceStructureHostPlacement[];
+   workspaces: SidebarWorkspacePlacement[];
+ }
+@@ -438,6 +439,7 @@ export function buildSidebarProjectsFromStructure(input: {
+       projectName: project.projectName,
+       projectKind: project.projectKind,
+       iconWorkingDir: project.iconWorkingDir,
++      groupName: project.groupName,
+       hosts: project.hosts,
+       workspaceKeys: project.workspaceKeys,
+     })),
+@@ -456,6 +458,7 @@ export function buildSidebarProjectsFromHostProjects(input: {
+     projectName: project.projectName,
+     projectKind: project.projectKind,
+     iconWorkingDir: project.iconWorkingDir,
++    groupName: project.groupName ?? null,
+     hosts: project.hosts,
+     workspaces: project.workspaceKeys.map((workspaceKey) =>
+       createStructuralWorkspaceEntry({
+diff --git a/packages/app/src/projects/host-project-model.ts b/packages/app/src/projects/host-project-model.ts
+index fb90ebf..c648be4 100644
+--- a/packages/app/src/projects/host-project-model.ts
++++ b/packages/app/src/projects/host-project-model.ts
+@@ -37,12 +37,14 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
+     projectName: trimOptional(route.displayName) || projectId,
+     projectKind: "unknown",
+     iconWorkingDir,
++    groupName: null,
+     hosts: [
+       {
+         serverId: route.serverId,
+         projectId,
+         iconWorkingDir,
+         worktreeSupport: "unknown",
++        groupName: null,
+       },
+     ],
+     workspaceKeys: [],
+@@ -75,6 +77,7 @@ export function hostProjectFromWorkspace(input: {
+     projectName: input.workspace.projectDisplayName || projectId,
+     projectKind: input.workspace.projectKind,
+     iconWorkingDir,
++    groupName: input.workspace.projectGroupName ?? null,
+     hosts: [
+       {
+         serverId: input.serverId,
+@@ -82,6 +85,7 @@ export function hostProjectFromWorkspace(input: {
+         iconWorkingDir,
+         worktreeSupport: canCreate ? "supported" : "unsupported",
+         customIconRevision: input.workspace.projectCustomIconRevision,
++        groupName: input.workspace.projectGroupName ?? null,
+       },
+     ],
+     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],
+diff --git a/packages/app/src/projects/workspace-structure.test.ts b/packages/app/src/projects/workspace-structure.test.ts
+index 350f885..822babc 100644
+--- a/packages/app/src/projects/workspace-structure.test.ts
++++ b/packages/app/src/projects/workspace-structure.test.ts
+@@ -7,12 +7,14 @@ function project(input: {
+   key: string | null;
+   root: string;
+   name?: string;
++  groupName?: string | null;
+ }): ProjectDescriptor {
+   return {
+     projectId: input.id,
+     projectKey: input.key,
+     projectDisplayName: input.name ?? "acme/app",
+     projectCustomName: null,
++    projectGroupName: input.groupName ?? null,
+     projectRootPath: input.root,
+     projectKind: "git",
+   };
+@@ -67,6 +69,34 @@ describe("buildWorkspaceStructureProjects", () => {
+     });
+   });
+ 
++  test("keeps a named group only when every host placement agrees", () => {
++    const result = buildWorkspaceStructureProjects({
++      sessions: [
++        {
++          serverId: "host-a",
++          projects: [
++            project({ id: "prj_a", key: "remote:acme/app", root: "/a", groupName: "Clients" }),
++          ],
++          workspaces: [],
++        },
++        {
++          serverId: "host-b",
++          projects: [
++            project({ id: "prj_b", key: "remote:acme/app", root: "/b", groupName: "Clients" }),
++          ],
++          workspaces: [],
++        },
++      ],
++    });
++    expect(result[0]?.groupName).toBe("Clients");
++    expect(result[0]?.hosts).toEqual(
++      expect.arrayContaining([
++        expect.objectContaining({ serverId: "host-a", projectId: "prj_a", groupName: "Clients" }),
++        expect.objectContaining({ serverId: "host-b", projectId: "prj_b", groupName: "Clients" }),
++      ]),
++    );
++  });
++
+   test("keeps two clones with the same key on one host separate", () => {
+     const key = "remote:github.com/acme/app";
+     const result = buildWorkspaceStructureProjects({
+diff --git a/packages/app/src/projects/workspace-structure.ts b/packages/app/src/projects/workspace-structure.ts
+index 939e138..5780989 100644
+--- a/packages/app/src/projects/workspace-structure.ts
++++ b/packages/app/src/projects/workspace-structure.ts
+@@ -8,6 +8,7 @@ export interface WorkspaceStructureHostPlacement {
+   worktreeSupport: "supported" | "unsupported" | "unknown";
+   customIconRevision?: string | null;
+   iconRevision?: string;
++  groupName?: string | null;
+ }
+ 
+ export interface WorkspaceStructureProject {
+@@ -16,6 +17,7 @@ export interface WorkspaceStructureProject {
+   projectName: string;
+   projectKind: WorkspaceDescriptor["projectKind"] | "unknown";
+   iconWorkingDir: string;
++  groupName?: string | null;
+   hosts: WorkspaceStructureHostPlacement[];
+   workspaceKeys: string[];
+ }
+@@ -37,6 +39,7 @@ interface ProjectDraft {
+   hasCustomName: boolean;
+   projectKind: WorkspaceDescriptor["projectKind"];
+   iconWorkingDir: string;
++  groupName: string | null;
+   hosts: Map<string, WorkspaceStructureHostPlacement>;
+   workspaces: Array<{ workspaceId: string; workspaceName: string; workspaceKey: string }>;
+ }
+@@ -98,6 +101,7 @@ export function buildWorkspaceStructureProjects(input: {
+       projectName: draft.projectName,
+       projectKind: draft.projectKind,
+       iconWorkingDir: draft.iconWorkingDir,
++      groupName: projectGroupNameForHosts(draft.hosts.values()),
+       hosts: Array.from(draft.hosts.values()),
+       workspaceKeys: draft.workspaces
+         .sort(compareWorkspaceStructureItems)
+@@ -162,6 +166,7 @@ function addProjectToView(input: {
+     worktreeSupport: project.projectKind === "git" ? "supported" : "unsupported",
+     customIconRevision: project.projectCustomIconRevision,
+     iconRevision: project.projectIconRevision,
++    groupName: project.projectGroupName ?? null,
+   };
+   const draft = byProject.get(viewKey);
+   if (!draft) {
+@@ -175,6 +180,7 @@ function addProjectToView(input: {
+       hasCustomName: Boolean(project.projectCustomName),
+       projectKind: project.projectKind,
+       iconWorkingDir: project.projectRootPath,
++      groupName: project.projectGroupName ?? null,
+       hosts: new Map([[serverId, placement]]),
+       workspaces: [],
+     });
+@@ -207,3 +213,9 @@ function compareWorkspaceStructureItems(
+     }) || left.workspaceId.localeCompare(right.workspaceId, undefined, { sensitivity: "base" })
+   );
+ }
++
++function projectGroupNameForHosts(hosts: Iterable<WorkspaceStructureHostPlacement>): string | null {
++  const names = new Set<string | null>();
++  for (const host of hosts) names.add(host.groupName ?? null);
++  return names.size === 1 ? (names.values().next().value ?? null) : null;
++}
+diff --git a/packages/app/src/runtime/directory-sync/index.ts b/packages/app/src/runtime/directory-sync/index.ts
+index 0f10d7f..975a3b6 100644
+--- a/packages/app/src/runtime/directory-sync/index.ts
++++ b/packages/app/src/runtime/directory-sync/index.ts
+@@ -949,6 +949,7 @@ function legacyProjectDescriptorFromWorkspace(workspace: WorkspaceDescriptor): P
+     projectKey: null,
+     projectDisplayName: workspace.projectDisplayName,
+     projectCustomName: workspace.projectCustomName ?? null,
++    projectGroupName: workspace.projectGroupName ?? null,
+     projectRootPath: workspace.projectRootPath,
+     projectKind: workspace.projectKind,
+   };
+diff --git a/packages/app/src/runtime/directory-sync/workspace-replica.test.ts b/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
+index 84f08b2..c127b4d 100644
+--- a/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
++++ b/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
+@@ -110,6 +110,7 @@ it("commits the authoritative snapshot before buffered project updates", () => {
+           projectKey: "remote:github.com/acme/attached",
+           projectDisplayName: "Renamed attached project",
+           projectCustomName: "Personal name",
++          projectGroupName: "Clients",
+           projectRootPath: "/moved/attached",
+           projectKind: "directory",
+         },
+@@ -131,11 +132,13 @@ it("commits the authoritative snapshot before buffered project updates", () => {
+   expect(session?.workspaces.get(attachedMain.id)).toMatchObject({
+     projectDisplayName: "Renamed attached project",
+     projectCustomName: "Personal name",
++    projectGroupName: "Clients",
+     projectRootPath: "/moved/attached",
+     projectKind: "directory",
+   });
+   expect(session?.workspaces.get(attachedFeature.id)).toMatchObject({
+     projectDisplayName: "Renamed attached project",
++    projectGroupName: "Clients",
+     projectRootPath: "/moved/attached",
+   });
+   expect(session?.workspaces.has(removed.id)).toBe(false);
+diff --git a/packages/app/src/runtime/directory-sync/workspace-replica.ts b/packages/app/src/runtime/directory-sync/workspace-replica.ts
+index d229c19..c55f772 100644
+--- a/packages/app/src/runtime/directory-sync/workspace-replica.ts
++++ b/packages/app/src/runtime/directory-sync/workspace-replica.ts
+@@ -153,6 +153,7 @@ export class WorkspaceDirectoryReplica {
+         projectDisplayName: project.projectDisplayName,
+         projectCustomName: project.projectCustomName,
+         projectCustomIconRevision: project.projectCustomIconRevision,
++        projectGroupName: project.projectGroupName,
+         projectRootPath: project.projectRootPath,
+         projectKind: project.projectKind,
+       };
+diff --git a/packages/app/src/runtime/replica-cache/index.ts b/packages/app/src/runtime/replica-cache/index.ts
+index ef78112..2e9c3ae 100644
+--- a/packages/app/src/runtime/replica-cache/index.ts
++++ b/packages/app/src/runtime/replica-cache/index.ts
+@@ -301,6 +301,7 @@ const StoredWorkspaceSchema = z.strictObject({
+   projectDisplayName: z.string(),
+   projectCustomName: z.string().nullable(),
+   projectCustomIconRevision: z.string().nullable(),
++  projectGroupName: z.string().nullable().optional(),
+   projectRootPath: z.string(),
+   workspaceDirectory: z.string(),
+   worktreeSlug: z.string().optional(),
+@@ -330,6 +331,7 @@ const StoredProjectSchema = z.strictObject({
+   projectDisplayName: z.string(),
+   projectCustomName: z.string().nullable(),
+   projectCustomIconRevision: z.string().nullable(),
++  projectGroupName: z.string().nullable().optional(),
+   projectIconRevision: z.string().optional(),
+   projectRootPath: z.string(),
+   projectKind: z.enum(["git", "non_git", "directory"]),
+@@ -691,6 +693,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
+     projectDisplayName: workspace.projectDisplayName,
+     projectCustomName: workspace.projectCustomName ?? null,
+     projectCustomIconRevision: workspace.projectCustomIconRevision ?? null,
++    projectGroupName: workspace.projectGroupName ?? null,
+     projectRootPath: workspace.projectRootPath,
+     workspaceDirectory: workspace.workspaceDirectory,
+     worktreeSlug: workspace.worktreeSlug,
+@@ -731,6 +734,7 @@ function serializeProject(project: ProjectDescriptor): StoredProject {
+     projectDisplayName: project.projectDisplayName,
+     projectCustomName: project.projectCustomName,
+     projectCustomIconRevision: project.projectCustomIconRevision ?? null,
++    projectGroupName: project.projectGroupName ?? null,
+     projectIconRevision: project.projectIconRevision,
+     projectRootPath: project.projectRootPath,
+     projectKind: project.projectKind,
+diff --git a/packages/app/src/stores/session-store.ts b/packages/app/src/stores/session-store.ts
+index 0d59b1c..1400c6c 100644
+--- a/packages/app/src/stores/session-store.ts
++++ b/packages/app/src/stores/session-store.ts
+@@ -108,6 +108,7 @@ export interface WorkspaceDescriptor {
+   projectDisplayName: string;
+   projectCustomName?: string | null;
+   projectCustomIconRevision?: string | null;
++  projectGroupName?: string | null;
+   projectRootPath: string;
+   workspaceDirectory: string;
+   worktreeSlug?: WorkspaceDescriptorPayload["worktreeSlug"];
+@@ -142,6 +143,7 @@ export function normalizeWorkspaceDescriptor(
+     projectDisplayName: payload.projectDisplayName,
+     projectCustomName: payload.projectCustomName ?? null,
+     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
++    projectGroupName: payload.projectGroupName ?? null,
+     projectRootPath: payload.projectRootPath,
+     // Canonicalize the workspace directory once, at the store boundary, so every
+     // consumer can read workspace.workspaceDirectory directly. Empty means "no
+@@ -173,6 +175,7 @@ export interface ProjectDescriptor {
+   projectDisplayName: string;
+   projectCustomName: string | null;
+   projectCustomIconRevision?: string | null;
++  projectGroupName?: string | null;
+   projectIconRevision?: string;
+   projectRootPath: string;
+   projectKind: WorkspaceDescriptorPayload["projectKind"];
+@@ -187,6 +190,7 @@ export function normalizeProjectDescriptor(
+     projectDisplayName: payload.projectDisplayName,
+     projectCustomName: payload.projectCustomName ?? null,
+     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
++    projectGroupName: payload.projectGroupName ?? null,
+     projectIconRevision: payload.projectIconRevision,
+     projectRootPath: payload.projectRootPath,
+     projectKind: payload.projectKind,
+diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
+index 2fe706c..c382fd0 100644
+--- a/packages/client/src/daemon-client.ts
++++ b/packages/client/src/daemon-client.ts
+@@ -3022,6 +3022,21 @@ export class DaemonClient {
+     return { customName: payload.customName };
+   }
+ 
++  async setProjectGroup(
++    projectId: string,
++    groupName: string | null,
++    requestId?: string,
++  ): Promise<{ groupName: string | null }> {
++    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.group.set.response">(
++      {
++        requestId,
++        message: { type: "project.group.set.request", projectId, groupName },
++      },
++    );
++    if (!payload.accepted) throw new Error(payload.error ?? "setProjectGroup rejected");
++    return { groupName: payload.groupName };
++  }
++
+   async setProjectIcon(
+     projectId: string,
+     source: ProjectIconSource,
+diff --git a/packages/protocol/src/messages.test.ts b/packages/protocol/src/messages.test.ts
+index 3394c8e..12d34c1 100644
+--- a/packages/protocol/src/messages.test.ts
++++ b/packages/protocol/src/messages.test.ts
+@@ -74,6 +74,20 @@ describe("project icon revision compatibility", () => {
+       }),
+     ).toEqual({ ...project, projectIconRevision: "automatic:none:v1" });
+   });
++
++  test("accepts optional group metadata without changing the project update channel", () => {
++    const grouped = { ...project, projectGroupName: "Clients" };
++    expect(WorkspaceProjectDescriptorPayloadSchema.parse(grouped)).toEqual(grouped);
++    expect(
++      SessionOutboundMessageSchema.parse({
++        type: "project.update",
++        payload: { kind: "upsert", project: grouped },
++      }),
++    ).toEqual({
++      type: "project.update",
++      payload: { kind: "upsert", project: grouped },
++    });
++  });
+ });
+ 
+ describe("workspace descriptor message compatibility", () => {
+diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
+index a716d45..498fee7 100644
+--- a/packages/protocol/src/messages.ts
++++ b/packages/protocol/src/messages.ts
+@@ -950,6 +950,14 @@ export const ProjectRenameRequestSchema = z.object({
+   requestId: z.string(),
+ });
+ 
++export const ProjectGroupSetRequestSchema = z.object({
++  type: z.literal("project.group.set.request"),
++  projectId: z.string(),
++  // Null or empty string removes this project from its named group.
++  groupName: z.string().nullable(),
++  requestId: z.string(),
++});
++
+ export const ProjectIconSetRequestSchema = z.object({
+   type: z.literal("project.icon.set.request"),
+   projectId: z.string(),
+@@ -2034,6 +2042,17 @@ export const ProjectRenameResponseSchema = z.object({
+   payload: ProjectRenameResponsePayloadSchema,
+ });
+ 
++export const ProjectGroupSetResponseSchema = z.object({
++  type: z.literal("project.group.set.response"),
++  payload: z.object({
++    requestId: z.string(),
++    projectId: z.string(),
++    accepted: z.boolean(),
++    groupName: z.string().nullable(),
++    error: z.string().nullable(),
++  }),
++});
++
+ export const ProjectIconSetResponseSchema = z.object({
+   type: z.literal("project.icon.set.response"),
+   payload: z.object({
+@@ -3184,6 +3203,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+   CloseItemsRequestMessageSchema,
+   UpdateAgentRequestMessageSchema,
+   ProjectRenameRequestSchema,
++  ProjectGroupSetRequestSchema,
+   ProjectIconSetRequestSchema,
+   ProjectRemoveRequestSchema,
+   WorkspaceTitleSetRequestSchema,
+@@ -3627,6 +3647,8 @@ export const ServerInfoStatusPayloadSchema = z
+         projectRemove: z.boolean().optional(),
+         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
+         projectAdd: z.boolean().optional(),
++        // Unmodified servers do not advertise this fork capability.
++        projectGroups: z.boolean().optional(),
+         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
+         worktreeRestore: z.boolean().optional(),
+         // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
+@@ -3993,6 +4015,8 @@ export const WorkspaceDescriptorPayloadSchema = z
+     // Identifies the project's stored custom icon; null means automatic.
+     // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+     projectCustomIconRevision: z.string().nullable().optional(),
++    // Unmodified servers omit this fork-specific project metadata.
++    projectGroupName: z.string().nullable().optional(),
+     projectRootPath: z.string(),
+     workspaceDirectory: z.string().optional(),
+     // COMPAT(worktreeSlug): added in v0.2.6, remove optional after 2027-01-31.
+@@ -4183,6 +4207,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
+   projectCustomName: z.string().nullable().optional(),
+   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+   projectCustomIconRevision: z.string().nullable().optional(),
++  // Unmodified servers omit this fork-specific project metadata.
++  projectGroupName: z.string().nullable().optional(),
+   // Fingerprints the effective icon, including automatic discovery and the
+   // absence of an icon. Clients may persist icon results against this value.
+   // COMPAT(projectIconCache): added in v0.2.7, remove optional after 2027-02-12.
+@@ -6885,6 +6911,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+   AgentRewindResponseMessageSchema,
+   UpdateAgentResponseMessageSchema,
+   ProjectRenameResponseSchema,
++  ProjectGroupSetResponseSchema,
+   ProjectIconSetResponseSchema,
+   ProjectRemoveResponseSchema,
+   WorkspaceTitleSetResponseSchema,
+diff --git a/packages/server/src/server/authorization/operation-permissions.ts b/packages/server/src/server/authorization/operation-permissions.ts
+index fa26001..d6a5ecb 100644
+--- a/packages/server/src/server/authorization/operation-permissions.ts
++++ b/packages/server/src/server/authorization/operation-permissions.ts
+@@ -144,6 +144,7 @@ const INBOUND_PERMISSION = {
+   "project.github.clone.request": "workspace.manage",
+   "project.icon.get.request": "workspace.read",
+   "project.icon.set.request": "workspace.manage",
++  "project.group.set.request": "workspace.manage",
+   "project.list.request": "workspace.read",
+   "project.remove.request": "workspace.manage",
+   "project.rename.request": "workspace.manage",
+@@ -369,6 +370,7 @@ const OUTBOUND_PERMISSION = {
+   "project.github.clone.response": "workspace.manage",
+   "project.icon.get.response": "workspace.read",
+   "project.icon.set.response": "workspace.manage",
++  "project.group.set.response": "workspace.manage",
+   "project.list.response": "workspace.read",
+   "project.remove.response": "workspace.manage",
+   "project.rename.response": "workspace.manage",
+diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
+index f83040c..fa63769 100644
+--- a/packages/server/src/server/session.ts
++++ b/packages/server/src/server/session.ts
+@@ -671,6 +671,10 @@ interface ClientActivity {
+   appVisibilityChangedAt: Date;
+ }
+ 
++function projectGroupName(project: PersistedProjectRecord | null | undefined): string | null {
++  return project?.groupName ?? null;
++}
++
+ export class Session {
+   readonly delivery = new SessionDelivery(
+     (source, message) => {
+@@ -2714,6 +2718,8 @@ export class Session {
+   }
+ 
+   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
++    const projectMutation = this.dispatchProjectMutationMessage(msg);
++    if (projectMutation) return projectMutation;
+     switch (msg.type) {
+       case "fetch_agents_request":
+         return this.handleFetchAgents(msg);
+@@ -2731,10 +2737,6 @@ export class Session {
+         return this.handleCloseItemsRequest(msg);
+       case "update_agent_request":
+         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
+-      case "project.rename.request":
+-        return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
+-      case "project.icon.set.request":
+-        return this.handleProjectIconSetRequest(msg);
+       case "send_agent_message_request":
+         return this.handleSendAgentMessageRequest(msg);
+       case "wait_for_finish_request":
+@@ -3437,6 +3439,81 @@ export class Session {
+     }
+   }
+ 
++  private dispatchProjectMutationMessage(msg: SessionInboundMessage): Promise<void> | undefined {
++    switch (msg.type) {
++      case "project.rename.request":
++        return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
++      case "project.group.set.request":
++        return this.handleProjectGroupSetRequest(msg.projectId, msg.groupName, msg.requestId);
++      case "project.icon.set.request":
++        return this.handleProjectIconSetRequest(msg);
++      default:
++        return undefined;
++    }
++  }
++
++  private async handleProjectGroupSetRequest(
++    projectId: string,
++    groupName: string | null,
++    requestId: string,
++  ): Promise<void> {
++    const normalizedGroupName = groupName?.trim() || null;
++    try {
++      const existing = await this.projectRegistry.get(projectId);
++      if (!existing) {
++        this.emit({
++          type: "project.group.set.response",
++          payload: {
++            requestId,
++            projectId,
++            accepted: false,
++            groupName: null,
++            error: "Project not found",
++          },
++        });
++        return;
++      }
++      const updated = {
++        ...existing,
++        groupName: normalizedGroupName,
++        updatedAt: new Date().toISOString(),
++      };
++      await this.projectRegistry.upsert(updated);
++      this.emit({
++        type: "project.group.set.response",
++        payload: {
++          requestId,
++          projectId,
++          accepted: true,
++          groupName: normalizedGroupName,
++          error: null,
++        },
++      });
++      await this.emitProjectUpdate({ kind: "upsert", project: updated });
++      const affectedWorkspaceIds = (await this.workspaceRegistry.list())
++        .filter((workspace) => workspace.projectId === projectId)
++        .map((workspace) => workspace.workspaceId);
++      if (affectedWorkspaceIds.length > 0) {
++        await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
++      }
++    } catch (error) {
++      this.sessionLogger.error(
++        { err: error, projectId, requestId },
++        "session: project.group.set.request error",
++      );
++      this.emit({
++        type: "project.group.set.response",
++        payload: {
++          requestId,
++          projectId,
++          accepted: false,
++          groupName: normalizedGroupName,
++          error: getErrorMessageOr(error, "Failed to update project group"),
++        },
++      });
++    }
++  }
++
+   private async handleProjectRenameRequest(
+     projectId: string,
+     customName: string | null,
+@@ -5537,6 +5614,7 @@ export class Session {
+         : workspace.projectId,
+       projectCustomName: resolvedProjectRecord?.customName ?? null,
+       projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
++      projectGroupName: projectGroupName(resolvedProjectRecord),
+       projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
+       workspaceDirectory: workspace.cwd,
+       worktreeSlug,
+@@ -5626,6 +5704,7 @@ export class Session {
+         : result.workspace.projectId,
+       projectCustomName: projectRecord?.customName ?? null,
+       projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
++      projectGroupName: projectGroupName(projectRecord),
+       projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
+       workspaceDirectory: result.workspace.cwd,
+       worktreeSlug: basename(result.worktree.worktreePath),
+@@ -5804,6 +5883,7 @@ export class Session {
+       projectDisplayName: resolveProjectDisplayName(project),
+       projectCustomName: project.customName ?? null,
+       projectCustomIconRevision: project.customIconRevision ?? null,
++      projectGroupName: project.groupName ?? null,
+       projectIconRevision: icon.revision,
+       projectRootPath: project.rootPath,
+       projectKind: project.kind,
+diff --git a/packages/server/src/server/session.workspaces.test.ts b/packages/server/src/server/session.workspaces.test.ts
+index 1be52bc..4a1c46e 100644
+--- a/packages/server/src/server/session.workspaces.test.ts
++++ b/packages/server/src/server/session.workspaces.test.ts
+@@ -8051,6 +8051,71 @@ test("project.rename.request stores customName and emits an updated workspace de
+   });
+ });
+ 
++test("project.group.set.request persists the group and publishes updated descriptors", async () => {
++  const emitted: SessionOutboundMessage[] = [];
++  const session = asTestSession(
++    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
++  );
++  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });
++
++  const project = createPersistedProjectRecord({
++    projectId: "prj_group",
++    rootPath: REPO_CWD,
++    kind: "git",
++    displayName: "acme/repo",
++    createdAt: "2026-03-01T12:00:00.000Z",
++    updatedAt: "2026-03-01T12:00:00.000Z",
++  });
++  const workspace = createPersistedWorkspaceRecord({
++    workspaceId: "ws-group",
++    projectId: project.projectId,
++    cwd: REPO_CWD,
++    kind: "local_checkout",
++    displayName: "main",
++    createdAt: "2026-03-01T12:00:00.000Z",
++    updatedAt: "2026-03-01T12:00:00.000Z",
++  });
++  const projects = new Map([[project.projectId, project]]);
++  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
++  session.projectRegistry.upsert = async (record: unknown) => {
++    const updated = record as typeof project;
++    projects.set(updated.projectId, updated);
++  };
++  session.workspaceRegistry.list = async () => [workspace];
++  session.workspaceRegistry.get = async (id: string) =>
++    id === workspace.workspaceId ? workspace : null;
++
++  await session.handleMessage({
++    type: "fetch_workspaces_request",
++    requestId: "sub-group-workspaces",
++    subscribe: { subscriptionId: "sub-group-workspaces" },
++  });
++
++  await session.handleMessage({
++    type: "project.group.set.request",
++    projectId: project.projectId,
++    groupName: "  Clients  ",
++    requestId: "req-group-set",
++  });
++
++  expect(findByType(emitted, "project.group.set.response")?.payload).toEqual({
++    requestId: "req-group-set",
++    projectId: project.projectId,
++    accepted: true,
++    groupName: "Clients",
++    error: null,
++  });
++  expect(projects.get(project.projectId)?.groupName).toBe("Clients");
++  expect(findByType(emitted, "project.update")?.payload).toMatchObject({
++    kind: "upsert",
++    project: { projectId: project.projectId, projectGroupName: "Clients" },
++  });
++  expect(findByType(emitted, "workspace_update")?.payload).toMatchObject({
++    kind: "upsert",
++    workspace: { id: workspace.workspaceId, projectGroupName: "Clients" },
++  });
++});
++
+ test("project.rename.request updates a project with no workspaces", async () => {
+   const emitted: SessionOutboundMessage[] = [];
+   const session = asTestSession(
+diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
+index 30a9e59..2ae2e50 100644
+--- a/packages/server/src/server/websocket-server.ts
++++ b/packages/server/src/server/websocket-server.ts
+@@ -320,6 +320,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
+       projectKey: input.projectKey ?? null,
+       customName: null,
+       customIconRevision: null,
++      groupName: null,
+       createdAt: input.timestamp,
+       updatedAt: input.timestamp,
+       archivedAt: null,
+@@ -1857,6 +1858,8 @@ export class VoiceAssistantWebSocketServer {
+         projectRemove: true,
+         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
+         projectAdd: true,
++        // Fork capability advertised only by servers that implement project groups.
++        projectGroups: true,
+         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
+         projectList: true,
+         // COMPAT(worktreeRestore): keep through 2027-01-11 for clients older than v0.1.105.
+diff --git a/packages/server/src/server/workspace-directory.ts b/packages/server/src/server/workspace-directory.ts
+index 13b9996..feacab2 100644
+--- a/packages/server/src/server/workspace-directory.ts
++++ b/packages/server/src/server/workspace-directory.ts
+@@ -577,6 +577,7 @@ export class WorkspaceDirectory {
+         projectDisplayName: resolveProjectDisplayName(project),
+         projectCustomName: project.customName ?? null,
+         projectCustomIconRevision: project.customIconRevision ?? null,
++        projectGroupName: project.groupName ?? null,
+         projectRootPath: project.rootPath,
+         projectKind: project.kind,
+       }));
+diff --git a/packages/server/src/server/workspace-registry.test.ts b/packages/server/src/server/workspace-registry.test.ts
+index 80c328c..84b4ee5 100644
+--- a/packages/server/src/server/workspace-registry.test.ts
++++ b/packages/server/src/server/workspace-registry.test.ts
+@@ -413,6 +413,36 @@ describe("workspace registries", () => {
+     expect(record?.displayName).toBe("acme/repo");
+   });
+ 
++  test("persists group membership through a later project rename", async () => {
++    await projectRegistry.initialize();
++    const projectId = "remote:github.com/acme/repo";
++    await projectRegistry.upsert(
++      createPersistedProjectRecord({
++        projectId,
++        rootPath: "/home/me/work/repo",
++        kind: "git",
++        displayName: "acme/repo",
++        groupName: "Clients",
++        createdAt: "2026-03-01T00:00:00.000Z",
++        updatedAt: "2026-03-01T00:00:00.000Z",
++      }),
++    );
++    await projectRegistry.update(projectId, (record) => ({
++      ...record,
++      customName: "Acme (work)",
++      updatedAt: "2026-03-02T00:00:00.000Z",
++    }));
++
++    const restartedRegistry = new FileBackedProjectRegistry(
++      path.join(tmpDir, "projects", "projects.json"),
++      logger,
++    );
++    await restartedRegistry.initialize();
++    const record = await restartedRegistry.get(projectId);
++    expect(record?.customName).toBe("Acme (work)");
++    expect(record?.groupName).toBe("Clients");
++  });
++
+   test("creates, updates, archives, deletes, and lists workspace records", async () => {
+     await workspaceRegistry.initialize();
+     await workspaceRegistry.upsert(
+diff --git a/packages/server/src/server/workspace-registry.ts b/packages/server/src/server/workspace-registry.ts
+index 64f6f1e..40fc57d 100644
+--- a/packages/server/src/server/workspace-registry.ts
++++ b/packages/server/src/server/workspace-registry.ts
+@@ -43,6 +43,12 @@ const PersistedProjectRecordSchema = z.object({
+     .nullable()
+     .optional()
+     .transform((value) => value ?? null),
++  // A group is represented by its user-visible name. Null keeps the project ungrouped.
++  groupName: z
++    .string()
++    .nullable()
++    .optional()
++    .transform((value) => value ?? null),
+   createdAt: z.string(),
+   updatedAt: z.string(),
+   archivedAt: z.string().nullable(),
+@@ -648,6 +654,7 @@ export function createPersistedProjectRecord(input: {
+   customName?: string | null;
+   projectKey?: string | null;
+   customIconRevision?: string | null;
++  groupName?: string | null;
+   createdAt: string;
+   updatedAt: string;
+   archivedAt?: string | null;
+@@ -657,6 +664,7 @@ export function createPersistedProjectRecord(input: {
+     customName: input.customName ?? null,
+     projectKey: input.projectKey ?? null,
+     customIconRevision: input.customIconRevision ?? null,
++    groupName: input.groupName ?? null,
+     archivedAt: input.archivedAt ?? null,
+   });
+ }
