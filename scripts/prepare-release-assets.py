@@ -18,13 +18,11 @@ def one_directory(root: pathlib.Path, pattern: str) -> pathlib.Path:
     return matches[0]
 
 
-def copy_files(source: pathlib.Path, destination: pathlib.Path, exclude_mac_metadata: bool = False) -> None:
+def copy_files(source: pathlib.Path, destination: pathlib.Path) -> None:
     for item in source.iterdir():
         if not item.is_file():
             continue
         if item.name in {"builder-debug.yml", "builder-effective-config.yaml"}:
-            continue
-        if exclude_mac_metadata and item.name.endswith("-mac.yml"):
             continue
         shutil.copy2(item, destination / item.name)
 
@@ -51,26 +49,10 @@ def main() -> None:
     windows = one_directory(artifacts, f"release-windows-{args.version}-*")
     linux = one_directory(artifacts, f"release-linux-{args.version}-*")
     macos_arm64 = one_directory(artifacts, f"release-macos-arm64-{args.version}-*")
-    macos_x64 = one_directory(artifacts, f"release-macos-x64-{args.version}-*")
 
     copy_files(windows, output)
     copy_files(linux, output)
-    copy_files(macos_arm64, output, exclude_mac_metadata=True)
-    copy_files(macos_x64, output, exclude_mac_metadata=True)
-
-    mac_documents = []
-    for directory in (macos_arm64, macos_x64):
-        with (directory / f"{metadata_prefix}-mac.yml").open() as file:
-            mac_documents.append(yaml.safe_load(file))
-    merged_mac = mac_documents[0]
-    merged_mac["files"] = [entry for document in mac_documents for entry in document["files"]]
-    merged_mac["path"] = merged_mac["files"][0]["url"]
-    merged_mac["sha512"] = merged_mac["files"][0]["sha512"]
-    release_dates = [document.get("releaseDate") for document in mac_documents if document.get("releaseDate")]
-    if release_dates:
-        merged_mac["releaseDate"] = max(release_dates)
-    with (output / f"{metadata_prefix}-mac.yml").open("w") as file:
-        yaml.safe_dump(merged_mac, file, sort_keys=False)
+    copy_files(macos_arm64, output)
 
     for platform in ("", "-linux", "-mac"):
         metadata = output / f"{metadata_prefix}{platform}.yml"
