@@ -714,6 +714,7 @@ jobs:
           npm run build:desktop -- --publish never --mac --arm64
           -c.mac.identity=-
           -c.mac.notarize=false
+          -c.mac.hardenedRuntime=false
 
       - name: Verify macOS archive app signatures
         shell: bash
@@ -722,11 +723,30 @@ jobs:
 
           verify_app_signature() {
             local app_path="$1"
+            local code_path
+            local flags_value
             local signature_details
+            local signature
+            local team_identifier
 
             codesign --verify --deep --strict --verbose=2 "${app_path}"
-            signature_details="$(codesign --display --verbose=4 "${app_path}" 2>&1)"
-            grep -Fqx 'Signature=adhoc' <<<"${signature_details}"
+            while IFS= read -r -d '' code_path; do
+              if [[ "${code_path}" != "${app_path}" ]] && ! file -b "${code_path}" | grep -Fq 'Mach-O'; then
+                continue
+              fi
+
+              signature_details="$(codesign --display --verbose=4 "${code_path}" 2>&1)"
+              signature="$(grep '^Signature=' <<<"${signature_details}")"
+              flags_value="$(sed -nE 's/^CodeDirectory .* flags=(0x[[:xdigit:]]+).*/\1/p' <<<"${signature_details}")"
+              team_identifier="$(grep '^TeamIdentifier=' <<<"${signature_details}" || true)"
+              printf 'Signature %s: %s flags=%s %s\n' "${code_path#${app_path}/}" "${signature}" "${flags_value}" "${team_identifier}"
+
+              [[ "${signature}" == 'Signature=adhoc' ]]
+              [[ -z "${team_identifier}" || "${team_identifier}" == 'TeamIdentifier=not set' ]]
+              [[ "${flags_value}" =~ ^0x[[:xdigit:]]+$ ]]
+              # CS_RUNTIME marks code signed with the hardened runtime.
+              (( (flags_value & 0x10000) == 0 ))
+            done < <(printf '%s\0' "${app_path}"; find "${app_path}/Contents" -type f -print0)
           }
 
           stop_app() {
