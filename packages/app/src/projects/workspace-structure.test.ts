@@ -7,12 +7,14 @@ function project(input: {
   key: string | null;
   root: string;
   name?: string;
+  groupName?: string | null;
 }): ProjectDescriptor {
   return {
     projectId: input.id,
     projectKey: input.key,
     projectDisplayName: input.name ?? "acme/app",
     projectCustomName: null,
+    projectGroupName: input.groupName ?? null,
     projectRootPath: input.root,
     projectKind: "git",
   };
@@ -65,6 +67,34 @@ describe("buildWorkspaceStructureProjects", () => {
       ],
       workspaceKeys: ["host-a:ws-a", "host-b:ws-b"],
     });
+  });
+
+  test("keeps a named group only when every host placement agrees", () => {
+    const result = buildWorkspaceStructureProjects({
+      sessions: [
+        {
+          serverId: "host-a",
+          projects: [
+            project({ id: "prj_a", key: "remote:acme/app", root: "/a", groupName: "Clients" }),
+          ],
+          workspaces: [],
+        },
+        {
+          serverId: "host-b",
+          projects: [
+            project({ id: "prj_b", key: "remote:acme/app", root: "/b", groupName: "Clients" }),
+          ],
+          workspaces: [],
+        },
+      ],
+    });
+    expect(result[0]?.groupName).toBe("Clients");
+    expect(result[0]?.hosts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ serverId: "host-a", projectId: "prj_a", groupName: "Clients" }),
+        expect.objectContaining({ serverId: "host-b", projectId: "prj_b", groupName: "Clients" }),
+      ]),
+    );
   });
 
   test("keeps two clones with the same key on one host separate", () => {

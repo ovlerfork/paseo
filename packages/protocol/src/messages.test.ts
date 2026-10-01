@@ -75,6 +75,20 @@ describe("project icon revision compatibility", () => {
       }),
     ).toEqual({ ...project, projectIconRevision: "automatic:none:v1" });
   });
+
+  test("accepts optional group metadata without changing the project update channel", () => {
+    const grouped = { ...project, projectGroupName: "Clients" };
+    expect(WorkspaceProjectDescriptorPayloadSchema.parse(grouped)).toEqual(grouped);
+    expect(
+      SessionOutboundMessageSchema.parse({
+        type: "project.update",
+        payload: { kind: "upsert", project: grouped },
+      }),
+    ).toEqual({
+      type: "project.update",
+      payload: { kind: "upsert", project: grouped },
+    });
+  });
 });
 
 describe("workspace descriptor message compatibility", () => {

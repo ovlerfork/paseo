@@ -60,6 +60,7 @@ export interface SidebarProjectEntry {
   projectName: string;
   projectKind: WorkspaceStructureProject["projectKind"];
   iconWorkingDir: string;
+  groupName?: string | null;
   hosts: WorkspaceStructureHostPlacement[];
   workspaces: SidebarWorkspacePlacement[];
 }
@@ -449,6 +450,7 @@ export function buildSidebarProjectsFromStructure(input: {
       projectName: project.projectName,
       projectKind: project.projectKind,
       iconWorkingDir: project.iconWorkingDir,
+      groupName: project.groupName,
       hosts: project.hosts,
       workspaceKeys: project.workspaceKeys,
     })),
@@ -467,6 +469,7 @@ export function buildSidebarProjectsFromHostProjects(input: {
     projectName: project.projectName,
     projectKind: project.projectKind,
     iconWorkingDir: project.iconWorkingDir,
+    groupName: project.groupName ?? null,
     hosts: project.hosts,
     workspaces: project.workspaceKeys.map((workspaceKey) =>
       createStructuralWorkspaceEntry({
