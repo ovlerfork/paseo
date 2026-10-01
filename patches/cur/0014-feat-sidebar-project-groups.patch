@@ -1,14 +1,59 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e8b1ef3c65d90fc583c898c96d18983105665c03 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 06:51:18 +0000
-Subject: [PATCH] Add shared project groups to the sidebar
+Date: Thu, 1 Oct 2026 17:09:55 +0000
+Subject: [PATCH] Add searchable shared project groups to the sidebar
 
+---
+ packages/app/src/components/left-sidebar.tsx  |  49 +-
+ .../components/project-groups-sheet.test.tsx  | 241 ++++++++++
+ .../src/components/project-groups-sheet.tsx   | 417 ++++++++++++++++++
+ .../src/components/sidebar-workspace-list.tsx | 251 +++++++++--
+ .../hooks/sidebar-workspaces-view-model.ts    |   3 +
+ .../app/src/projects/host-project-model.ts    |   4 +
+ .../src/projects/workspace-structure.test.ts  |  30 ++
+ .../app/src/projects/workspace-structure.ts   |  12 +
+ .../app/src/runtime/directory-sync/index.ts   |   1 +
+ .../directory-sync/workspace-replica.test.ts  |   3 +
+ .../directory-sync/workspace-replica.ts       |   1 +
+ .../app/src/runtime/replica-cache/index.ts    |   4 +
+ packages/app/src/stores/session-store.ts      |   4 +
+ packages/client/src/daemon-client.ts          |  15 +
+ packages/protocol/src/messages.test.ts        |  14 +
+ packages/protocol/src/messages.ts             |  27 ++
+ .../authorization/operation-permissions.ts    |   2 +
+ packages/server/src/server/session.ts         |  88 +++-
+ .../src/server/session.workspaces.test.ts     |  65 +++
+ .../server/src/server/websocket-server.ts     |   3 +
+ .../server/src/server/workspace-directory.ts  |   1 +
+ .../src/server/workspace-registry.test.ts     |  30 ++
+ .../server/src/server/workspace-registry.ts   |   8 +
+ 23 files changed, 1221 insertions(+), 52 deletions(-)
+ create mode 100644 packages/app/src/components/project-groups-sheet.test.tsx
+ create mode 100644 packages/app/src/components/project-groups-sheet.tsx
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index 4902a3a..4fe51fc 100644
+index 1cdfe83..aec05a9 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -67,6 +67,7 @@ interface SidebarSharedProps {
+@@ -14,7 +14,7 @@ import { Gesture } from "react-native-gesture-handler";
+ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+ import { scheduleOnRN } from "react-native-worklets";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+-import { StyleSheet, useUnistyles } from "react-native-unistyles";
++import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
+ import { resolveDesktopSidebarWidth } from "@/components/desktop-sidebar-layout";
+ import {
+@@ -56,6 +56,8 @@ import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
+ 
+ const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
++const ThemedFolderPlus = withUnistyles(FolderPlus);
++const workspaceHeaderIconColor = (theme: SidebarTheme) => ({ color: theme.colors.foregroundMuted });
+ 
+ interface SidebarSharedProps {
+   theme: SidebarTheme;
+@@ -63,6 +65,7 @@ interface SidebarSharedProps {
    projectIconTargets: SidebarProjectIconTarget[];
    pinnedGroups: PinnedSidebarGroups;
    projects: SidebarProjectEntry[];
@@ -16,7 +61,7 @@ index 4902a3a..4fe51fc 100644
    hasProjectsBeforeFilter: boolean;
    hasActiveProjectFilter: boolean;
    workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
-@@ -116,6 +117,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
+@@ -112,6 +115,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
  
    const {
      projects,
@@ -24,7 +69,7 @@ index 4902a3a..4fe51fc 100644
      hasProjectsBeforeFilter,
      resolvedProjectFilters,
      workspaceEntriesByKey,
-@@ -210,6 +212,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
+@@ -206,6 +210,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
      projectIconTargets,
      pinnedGroups,
      projects,
@@ -32,7 +77,7 @@ index 4902a3a..4fe51fc 100644
      hasProjectsBeforeFilter,
      hasActiveProjectFilter: resolvedProjectFilters.length > 0,
      workspaceEntriesByKey,
-@@ -534,6 +537,7 @@ function MobileSidebar({
+@@ -510,6 +515,7 @@ function MobileSidebar({
    projectIconTargets,
    pinnedGroups,
    projects,
@@ -40,7 +85,7 @@ index 4902a3a..4fe51fc 100644
    hasProjectsBeforeFilter,
    hasActiveProjectFilter,
    workspaceEntriesByKey,
-@@ -612,6 +616,7 @@ function MobileSidebar({
+@@ -588,6 +594,7 @@ function MobileSidebar({
              projectIconTargets={projectIconTargets}
              pinnedGroups={pinnedGroups}
              projects={projects}
@@ -48,7 +93,16 @@ index 4902a3a..4fe51fc 100644
              hasProjectsBeforeFilter={hasProjectsBeforeFilter}
              hasActiveProjectFilter={hasActiveProjectFilter}
              workspaceEntriesByKey={workspaceEntriesByKey}
-@@ -646,6 +651,7 @@ function DesktopSidebar({
+@@ -598,7 +605,7 @@ function MobileSidebar({
+             onImportSession={handleImportSession}
+             parentGestureRef={closeGestureRef}
+             dragGestureHostActive={active}
+-            listHeaderComponent={workspacesSectionHeaderElement}
++            listHeaderComponent={renderWorkspacesSectionHeader}
+           />
+         )}
+ 
+@@ -622,6 +629,7 @@ function DesktopSidebar({
    projectIconTargets,
    pinnedGroups,
    projects,
@@ -56,7 +110,7 @@ index 4902a3a..4fe51fc 100644
    hasProjectsBeforeFilter,
    hasActiveProjectFilter,
    workspaceEntriesByKey,
-@@ -790,6 +796,7 @@ function DesktopSidebar({
+@@ -766,6 +774,7 @@ function DesktopSidebar({
              projectIconTargets={projectIconTargets}
              pinnedGroups={pinnedGroups}
              projects={projects}
@@ -64,12 +118,80 @@ index 4902a3a..4fe51fc 100644
              hasProjectsBeforeFilter={hasProjectsBeforeFilter}
              hasActiveProjectFilter={hasActiveProjectFilter}
              workspaceEntriesByKey={workspaceEntriesByKey}
+@@ -773,7 +782,7 @@ function DesktopSidebar({
+             onRefresh={handleRefresh}
+             onAddProject={handleOpenProject}
+             onImportSession={handleImportSession}
+-            listHeaderComponent={workspacesSectionHeaderElement}
++            listHeaderComponent={renderWorkspacesSectionHeader}
+           />
+         )}
+ 
+@@ -800,11 +809,30 @@ function DesktopSidebar({
+   );
+ }
+ 
+-function WorkspacesSectionHeader() {
++function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
+   return (
+     <View style={styles.workspacesSectionHeader}>
+       <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+       <View style={styles.workspacesSectionActions}>
++        {onCreateProjectGroup ? (
++          <Tooltip delayDuration={300}>
++            <TooltipTrigger asChild>
++              <Pressable
++                accessibilityRole="button"
++                accessibilityLabel="New project group"
++                hitSlop={6}
++                onPress={onCreateProjectGroup}
++                style={styles.workspacesSectionActionButton}
++                testID="sidebar-create-project-group"
++              >
++                <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
++              </Pressable>
++            </TooltipTrigger>
++            <TooltipContent side="bottom" align="center" offset={8}>
++              <IconTooltipContent label="New project group" />
++            </TooltipContent>
++          </Tooltip>
++        ) : null}
+         <Tooltip delayDuration={300}>
+           <TooltipTrigger asChild>
+             <View>
+@@ -820,9 +848,9 @@ function WorkspacesSectionHeader() {
+   );
+ }
+ 
+-// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
+-// renders (WorkspacesSectionHeader takes no props).
+-const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
++function renderWorkspacesSectionHeader(onCreateProjectGroup?: () => void) {
++  return <WorkspacesSectionHeader onCreateProjectGroup={onCreateProjectGroup} />;
++}
+ 
+ // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
+ // avoid the "Unable to find node on an unmounted component" crash when Unistyles
+@@ -870,6 +898,13 @@ const styles = StyleSheet.create((theme) => ({
+     alignItems: "center",
+     gap: theme.spacing[1],
+   },
++  workspacesSectionActionButton: {
++    width: 28,
++    height: 28,
++    alignItems: "center",
++    justifyContent: "center",
++    borderRadius: theme.borderRadius.lg,
++  },
+   sidebarContent: {
+     flex: 1,
+     minHeight: 0,
 diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
 new file mode 100644
-index 0000000..3e3285f
+index 0000000..8fa3576
 --- /dev/null
 +++ b/packages/app/src/components/project-groups-sheet.test.tsx
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,241 @@
 +import { JSDOM } from "jsdom";
 +import React from "react";
 +import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
@@ -136,6 +258,28 @@ index 0000000..3e3285f
 +  );
 +}
 +
++function SearchFieldMock({
++  value,
++  onChangeText,
++  testID,
++}: {
++  value: string;
++  onChangeText: (value: string) => void;
++  testID?: string;
++}) {
++  const handleSearchClients = React.useCallback(() => onChangeText("clients"), [onChangeText]);
++
++  return (
++    <>
++      <input data-testid={testID} value={value} readOnly />
++      <button type="button" data-testid={`${testID}-search-clients`} onClick={handleSearchClients}>
++        Search clients
++      </button>
++    </>
++  );
++}
++
++vi.mock("lucide-react-native", () => ({ Check: () => null }));
 +vi.mock("react-native", () => ({
 +  View: "div",
 +  Text: "span",
@@ -143,6 +287,7 @@ index 0000000..3e3285f
 +  Pressable: PressableMock,
 +}));
 +vi.mock("react-native-unistyles", () => ({
++  withUnistyles: <T,>(component: T) => component,
 +  StyleSheet: {
 +    create: (factory: (theme: object) => object) =>
 +      factory({
@@ -164,6 +309,7 @@ index 0000000..3e3285f
 +}));
 +vi.mock("@/components/ui/button", () => ({ Button: ButtonMock }));
 +vi.mock("@/components/ui/form-field", () => ({ Field: FieldMock }));
++vi.mock("@/components/ui/search-field", () => ({ SearchField: SearchFieldMock }));
 +vi.mock("@/utils/confirm-dialog", () => ({ confirmDialog: vi.fn() }));
 +const { setProjectGroup } = vi.hoisted(() => ({ setProjectGroup: vi.fn() }));
 +
@@ -258,15 +404,46 @@ index 0000000..3e3285f
 +  await waitFor(() => expect(setProjectGroup).toHaveBeenCalledWith("project", null));
 +  expect(onClose).toHaveBeenCalledOnce();
 +});
++
++it("keeps selected projects when the editor filters them from view", async () => {
++  const currentGroupProject = { ...project, groupName: "Clients" };
++  const otherGroupProject = {
++    ...project,
++    viewKey: "two",
++    projectName: "Other client",
++    groupName: "Other",
++    hosts: [{ ...project.hosts[0], projectId: "project-two" }],
++  };
++  const view = render(
++    <ProjectGroupsSheet
++      visible
++      projects={[currentGroupProject, otherGroupProject]}
++      capableHosts={new Map([["host", true]])}
++      initialGroupName="Clients"
++      onClose={vi.fn()}
++    />,
++  );
++
++  expect(view.queryByTestId("project-group-project-two")).toBeNull();
++  fireEvent.click(view.getByTestId("project-group-include-other-groups"));
++  fireEvent.click(view.getByTestId("project-group-project-two"));
++  fireEvent.click(view.getByTestId("project-group-search-search-clients"));
++  expect(view.queryByTestId("project-group-project-two")).toBeNull();
++
++  fireEvent.click(view.getByText("Save"));
++  await waitFor(() => expect(setProjectGroup).toHaveBeenCalledWith("project-two", "Clients"));
++});
 diff --git a/packages/app/src/components/project-groups-sheet.tsx b/packages/app/src/components/project-groups-sheet.tsx
 new file mode 100644
-index 0000000..dba27f0
+index 0000000..3d54e7c
 --- /dev/null
 +++ b/packages/app/src/components/project-groups-sheet.tsx
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,417 @@
 +import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 +import { ScrollView, Text, View, Pressable } from "react-native";
-+import { StyleSheet } from "react-native-unistyles";
++import { Check } from "lucide-react-native";
++import { StyleSheet, withUnistyles } from "react-native-unistyles";
++import type { Theme } from "@/styles/theme";
 +import {
 +  AdaptiveModalSheet,
 +  AdaptiveTextInput,
@@ -274,9 +451,13 @@ index 0000000..dba27f0
 +} from "@/components/adaptive-modal-sheet";
 +import { Button } from "@/components/ui/button";
 +import { Field } from "@/components/ui/form-field";
++import { SearchField } from "@/components/ui/search-field";
 +import { confirmDialog } from "@/utils/confirm-dialog";
 +import { getHostRuntimeStore } from "@/runtime/host-runtime";
 +import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
++
++const ThemedCheck = withUnistyles(Check);
++const accentForegroundCheckColor = (theme: Theme) => ({ color: theme.colors.accentForeground });
 +
 +export interface ProjectGroupsSheetProps {
 +  visible: boolean;
@@ -309,6 +490,8 @@ index 0000000..dba27f0
 +  const [members, setMembers] = useState(initialMembers);
 +  const [error, setError] = useState<string | null>(null);
 +  const [saving, setSaving] = useState(false);
++  const [search, setSearch] = useState("");
++  const [includeOtherGroups, setIncludeOtherGroups] = useState(false);
 +  const initializedEditorKey = useRef<string | null>(null);
 +
 +  useEffect(() => {
@@ -322,6 +505,8 @@ index 0000000..dba27f0
 +    setName(initialGroupName ?? "");
 +    setMembers(initialMembers);
 +    setError(null);
++    setSearch("");
++    setIncludeOtherGroups(false);
 +  }, [initialGroupName, initialMembers, visible]);
 +
 +  const editable = useCallback(
@@ -336,6 +521,31 @@ index 0000000..dba27f0
 +  const existingMembers = useMemo(
 +    () => projects.filter((project) => project.groupName === initialGroupName),
 +    [initialGroupName, projects],
++  );
++  const visibleProjects = useMemo(() => {
++    const normalizedSearch = search.trim().toLocaleLowerCase();
++    return projects.filter((project) => {
++      const belongsToCurrentGroup = project.groupName === initialGroupName;
++      const isVisibleByGroup =
++        includeOtherGroups ||
++        project.groupName === null ||
++        project.groupName === undefined ||
++        belongsToCurrentGroup;
++      if (!isVisibleByGroup) return false;
++      return (
++        normalizedSearch.length === 0 ||
++        project.projectName.toLocaleLowerCase().includes(normalizedSearch) ||
++        project.iconWorkingDir.toLocaleLowerCase().includes(normalizedSearch)
++      );
++    });
++  }, [includeOtherGroups, initialGroupName, projects, search]);
++  const toggleIncludeOtherGroups = useCallback(
++    () => setIncludeOtherGroups((current) => !current),
++    [],
++  );
++  const includeOtherGroupsAccessibilityState = useMemo(
++    () => ({ checked: includeOtherGroups, disabled: saving }),
++    [includeOtherGroups, saving],
 +  );
 +  const header = useMemo<SheetHeader>(
 +    () => ({ title: initialGroupName ? "Edit project group" : "New project group" }),
@@ -511,17 +721,50 @@ index 0000000..dba27f0
 +        />
 +      </Field>
 +      <Text style={styles.label}>Projects</Text>
++      <View style={styles.projectFilters}>
++        <SearchField
++          key={`${initialGroupName ?? "new"}-${visible ? "open" : "closed"}`}
++          value={search}
++          onChangeText={setSearch}
++          placeholder="Search projects"
++          clearAccessibilityLabel="Clear project search"
++          testID="project-group-search"
++          clearTestID="project-group-search-clear"
++        />
++        <Pressable
++          accessibilityRole="checkbox"
++          accessibilityLabel="Include projects in other groups"
++          accessibilityState={includeOtherGroupsAccessibilityState}
++          disabled={saving}
++          onPress={toggleIncludeOtherGroups}
++          style={styles.includeOtherGroups}
++          testID="project-group-include-other-groups"
++        >
++          <View style={[styles.checkbox, includeOtherGroups && styles.checkboxSelected]}>
++            {includeOtherGroups ? (
++              <ThemedCheck size={14} uniProps={accentForegroundCheckColor} />
++            ) : null}
++          </View>
++          <Text style={styles.includeOtherGroupsLabel}>Include projects in other groups</Text>
++        </Pressable>
++      </View>
 +      <ScrollView style={styles.projects} contentContainerStyle={styles.projectsContent}>
-+        {projects.map((project) => (
-+          <ProjectGroupMemberRow
-+            key={project.viewKey}
-+            project={project}
-+            enabled={editable(project)}
-+            selected={members.has(project.viewKey)}
-+            saving={saving}
-+            onToggle={toggleMember}
-+          />
-+        ))}
++        {visibleProjects.length > 0 ? (
++          visibleProjects.map((project) => (
++            <ProjectGroupMemberRow
++              key={project.viewKey}
++              project={project}
++              enabled={editable(project)}
++              selected={members.has(project.viewKey)}
++              saving={saving}
++              onToggle={toggleMember}
++            />
++          ))
++        ) : (
++          <Text style={styles.emptyProjects}>
++            {search.trim() ? "No projects match your search" : "No projects available"}
++          </Text>
++        )}
 +      </ScrollView>
 +    </AdaptiveModalSheet>
 +  );
@@ -542,8 +785,8 @@ index 0000000..dba27f0
 +}) {
 +  const handlePress = useCallback(() => onToggle(project), [onToggle, project]);
 +  const accessibilityState = useMemo(
-+    () => ({ checked: selected, disabled: !enabled }),
-+    [enabled, selected],
++    () => ({ checked: selected, disabled: !enabled || saving }),
++    [enabled, saving, selected],
 +  );
 +  return (
 +    <Pressable
@@ -574,8 +817,23 @@ index 0000000..dba27f0
 +    marginTop: theme.spacing[3],
 +    marginBottom: theme.spacing[2],
 +  },
++  projectFilters: { gap: theme.spacing[2], marginBottom: theme.spacing[2] },
++  includeOtherGroups: {
++    minHeight: 32,
++    flexDirection: "row",
++    alignItems: "center",
++    gap: theme.spacing[2],
++    paddingHorizontal: theme.spacing[2],
++  },
++  includeOtherGroupsLabel: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
 +  projects: { maxHeight: 300 },
 +  projectsContent: { gap: theme.spacing[1] },
++  emptyProjects: {
++    color: theme.colors.foregroundMuted,
++    fontSize: theme.fontSize.base,
++    paddingHorizontal: theme.spacing[2],
++    paddingVertical: theme.spacing[3],
++  },
 +  projectRow: {
 +    minHeight: 40,
 +    flexDirection: "row",
@@ -599,16 +857,28 @@ index 0000000..dba27f0
 +  projectNameDisabled: { color: theme.colors.foregroundMuted },
 +}));
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index 4275099..ffcdd6f 100644
+index 4275099..c181dc6 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -1,4 +1,5 @@
- import { LoadingSpinner } from "@/components/ui/loading-spinner";
-+import { Button } from "@/components/ui/button";
- import {
-   View,
-   Text,
-@@ -151,6 +152,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
+@@ -36,7 +36,16 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
+ import { type GestureType } from "react-native-gesture-handler";
+ import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
+ import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
+-import { ExternalLink, Settings, MoreVertical, Plus, Trash2 } from "lucide-react-native";
++import {
++  ChevronDown,
++  ChevronRight,
++  ExternalLink,
++  Pencil,
++  Settings,
++  MoreVertical,
++  Plus,
++  Trash2,
++} from "lucide-react-native";
+ import { NestableScrollContainer } from "react-native-draggable-flatlist";
+ import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
+ import type { DraggableListDragHandleProps } from "./draggable-list.types";
+@@ -151,6 +160,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
  import { useHostBadges } from "@/hosts/use-host-badges";
  import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
  import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
@@ -616,7 +886,17 @@ index 4275099..ffcdd6f 100644
  
  const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
  
-@@ -216,6 +218,7 @@ interface SidebarWorkspaceListProps {
+@@ -163,6 +173,9 @@ const ThemedPlus = withUnistyles(Plus);
+ const ThemedMoreVertical = withUnistyles(MoreVertical);
+ const ThemedTrash2 = withUnistyles(Trash2);
+ const ThemedSettings = withUnistyles(Settings);
++const ThemedChevronDown = withUnistyles(ChevronDown);
++const ThemedChevronRight = withUnistyles(ChevronRight);
++const ThemedPencil = withUnistyles(Pencil);
+ 
+ const foregroundColorMapping = (theme: Theme) => ({
+   color: theme.colors.foreground,
+@@ -216,6 +229,7 @@ interface SidebarWorkspaceListProps {
    projectIconTargets: SidebarProjectIconTarget[];
    pinnedGroups: PinnedSidebarGroups;
    projects: SidebarProjectEntry[];
@@ -624,13 +904,21 @@ index 4275099..ffcdd6f 100644
    hasProjectsBeforeFilter: boolean;
    /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
    hasActiveProjectFilter: boolean;
-@@ -238,6 +241,39 @@ interface SidebarWorkspaceListProps {
+@@ -232,12 +246,69 @@ interface SidebarWorkspaceListProps {
+   listFooterComponent?: ReactElement | null;
+   // Rendered inside the scroll area, below the Pinned section and above the workspace
+   // list. Holds the "Workspaces" section header so pinned items sit above it.
+-  listHeaderComponent?: ReactElement | null;
++  listHeaderComponent?: (onCreateProjectGroup?: () => void) => ReactElement | null;
+   /** Gesture ref for coordinating with parent gestures (e.g., sidebar close) */
+   parentGestureRef?: MutableRefObject<GestureType | undefined>;
    dragGestureHostActive?: boolean;
  }
  
 +interface ProjectGroupHeaderProps {
 +  groupName: string;
 +  projectCount: number;
++  collapsed: boolean;
 +  onToggle: (groupName: string) => void;
 +  onEdit: (groupName: string) => void;
 +}
@@ -638,6 +926,7 @@ index 4275099..ffcdd6f 100644
 +const ProjectGroupHeader = memo(function ProjectGroupHeader({
 +  groupName,
 +  projectCount,
++  collapsed,
 +  onToggle,
 +  onEdit,
 +}: ProjectGroupHeaderProps) {
@@ -645,26 +934,48 @@ index 4275099..ffcdd6f 100644
 +  const handleEdit = useCallback(() => onEdit(groupName), [groupName, onEdit]);
 +
 +  return (
-+    <>
++    <View style={styles.projectGroupHeader}>
 +      <Pressable
 +        accessibilityRole="button"
++        accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${groupName}`}
 +        onPress={handleToggle}
-+        style={styles.projectGroupHeader}
++        style={styles.projectGroupToggle}
 +      >
-+        <Text style={styles.projectGroupTitle}>{groupName}</Text>
++        {collapsed ? (
++          <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />
++        ) : (
++          <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />
++        )}
++        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.projectGroupTitle}>
++          {groupName}
++        </Text>
 +        <Text style={styles.projectGroupCount}>{projectCount}</Text>
 +      </Pressable>
-+      <Button variant="ghost" size="xs" onPress={handleEdit}>
-+        Edit
-+      </Button>
-+    </>
++      <Tooltip delayDuration={300}>
++        <TooltipTrigger asChild>
++          <Pressable
++            accessibilityRole="button"
++            accessibilityLabel={`Edit ${groupName}`}
++            hitSlop={6}
++            onPress={handleEdit}
++            style={styles.projectGroupEditButton}
++            testID={`sidebar-edit-project-group-${groupName}`}
++          >
++            <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />
++          </Pressable>
++        </TooltipTrigger>
++        <TooltipContent side="top" align="center" offset={8}>
++          <Text>Edit group</Text>
++        </TooltipContent>
++      </Tooltip>
++    </View>
 +  );
 +});
 +
  interface ProjectHeaderRowProps {
    project: SidebarProjectEntry;
    displayName: string;
-@@ -1886,6 +1922,7 @@ export function SidebarWorkspaceList({
+@@ -1886,6 +1957,7 @@ export function SidebarWorkspaceList({
    projectIconTargets,
    pinnedGroups,
    projects,
@@ -672,7 +983,16 @@ index 4275099..ffcdd6f 100644
    hasProjectsBeforeFilter,
    hasActiveProjectFilter,
    workspaceEntriesByKey,
-@@ -1983,6 +2020,7 @@ export function SidebarWorkspaceList({
+@@ -1975,7 +2047,7 @@ export function SidebarWorkspaceList({
+         supportsPinningByServerId={supportsPinningByServerId}
+         onToggleWorkspacePin={onToggleWorkspacePin}
+         onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
+-        listHeaderComponent={listHeaderComponent}
++        listHeaderComponent={listHeaderComponent?.()}
+         sidebarFilterEmpty={sidebarFilterEmpty}
+         parentGestureRef={parentGestureRef}
+         dragGestureHostActive={dragGestureHostActive}
+@@ -1983,6 +2055,7 @@ export function SidebarWorkspaceList({
      ) : (
        <ProjectModeList
          projects={projects}
@@ -680,7 +1000,7 @@ index 4275099..ffcdd6f 100644
          pinnedGroups={pinnedGroups}
          workspaceEntriesByKey={workspaceEntriesByKey}
          projectIconByProjectViewKey={projectIconByProjectViewKey}
-@@ -2079,6 +2117,7 @@ function SidebarGroupedModeList({
+@@ -2079,6 +2152,7 @@ function SidebarGroupedModeList({
  
  function ProjectModeList({
    projects,
@@ -688,7 +1008,7 @@ index 4275099..ffcdd6f 100644
    pinnedGroups,
    workspaceEntriesByKey,
    projectIconByProjectViewKey,
-@@ -2120,6 +2159,15 @@ function ProjectModeList({
+@@ -2120,6 +2194,15 @@ function ProjectModeList({
    onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
  }) {
    const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
@@ -704,7 +1024,7 @@ index 4275099..ffcdd6f 100644
    const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
    const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
      new Map(),
-@@ -2394,24 +2442,76 @@ function ProjectModeList({
+@@ -2394,24 +2477,70 @@ function ProjectModeList({
      ],
    );
  
@@ -732,6 +1052,9 @@ index 4275099..ffcdd6f 100644
 +  }, []);
 +  const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
 +  const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
++  const canCreateProjectGroup = groupHostIds.some(
++    (serverId) => supportsProjectGroupsByServerId.get(serverId) === true,
++  );
 +  const editProjectGroup = useCallback((groupName: string) => setEditingGroupName(groupName), []);
    const projectBody =
      projects.length === 0 ? (
@@ -752,21 +1075,12 @@ index 4275099..ffcdd6f 100644
 -        containerStyle={styles.projectListContainer}
 -      />
 +      <>
-+        {groupHostIds.some((serverId) => supportsProjectGroupsByServerId.get(serverId) === true) ? (
-+          <Button
-+            variant="ghost"
-+            size="sm"
-+            onPress={openNewProjectGroup}
-+            testID="sidebar-create-project-group"
-+          >
-+            New group
-+          </Button>
-+        ) : null}
 +        {Array.from(groupedProjects.groups.entries()).map(([groupName, groupProjects]) => (
 +          <View key={groupName} style={styles.projectGroupBlock}>
 +            <ProjectGroupHeader
 +              groupName={groupName}
 +              projectCount={groupProjects.length}
++              collapsed={collapsedGroupNames.has(groupName)}
 +              onToggle={toggleGroup}
 +              onEdit={editProjectGroup}
 +            />
@@ -795,7 +1109,19 @@ index 4275099..ffcdd6f 100644
      );
  
    const content = (
-@@ -2464,28 +2564,37 @@ function ProjectModeList({
+@@ -2455,8 +2584,9 @@ function ProjectModeList({
+       {unpinnedProjects.length > 0 ||
+       hasActiveHostFilter ||
+       hasActiveProjectFilter ||
+-      sidebarFilterEmpty
+-        ? listHeaderComponent
++      sidebarFilterEmpty ||
++      canCreateProjectGroup
++        ? listHeaderComponent?.(canCreateProjectGroup ? openNewProjectGroup : undefined)
+         : null}
+       {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
+       {listFooterComponent}
+@@ -2464,28 +2594,37 @@ function ProjectModeList({
    );
  
    return (
@@ -855,7 +1181,7 @@ index 4275099..ffcdd6f 100644
    );
  }
  
-@@ -2506,6 +2615,20 @@ const styles = StyleSheet.create((theme) => ({
+@@ -2506,6 +2645,36 @@ const styles = StyleSheet.create((theme) => ({
    projectListContainer: {
      width: "100%",
    },
@@ -866,13 +1192,29 @@ index 4275099..ffcdd6f 100644
 +    alignItems: "center",
 +    paddingHorizontal: theme.spacing[2],
 +  },
++  projectGroupToggle: {
++    flex: 1,
++    minWidth: 0,
++    flexDirection: "row",
++    alignItems: "center",
++    gap: theme.spacing[1],
++  },
 +  projectGroupTitle: {
 +    color: theme.colors.foreground,
 +    fontSize: theme.fontSize.sm,
 +    fontWeight: "500",
 +    flex: 1,
++    minWidth: 0,
 +  },
 +  projectGroupCount: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
++  projectGroupEditButton: {
++    width: 28,
++    height: 28,
++    alignItems: "center",
++    justifyContent: "center",
++    borderRadius: theme.borderRadius.lg,
++    marginLeft: theme.spacing[1],
++  },
    pinnedSection: {
      marginBottom: theme.spacing[1],
    },
@@ -1142,7 +1484,7 @@ index ef78112..2e9c3ae 100644
      projectRootPath: project.projectRootPath,
      projectKind: project.projectKind,
 diff --git a/packages/app/src/stores/session-store.ts b/packages/app/src/stores/session-store.ts
-index 0d59b1c..1400c6c 100644
+index dd5469d..a2c431b 100644
 --- a/packages/app/src/stores/session-store.ts
 +++ b/packages/app/src/stores/session-store.ts
 @@ -108,6 +108,7 @@ export interface WorkspaceDescriptor {
@@ -1178,10 +1520,10 @@ index 0d59b1c..1400c6c 100644
      projectRootPath: payload.projectRootPath,
      projectKind: payload.projectKind,
 diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
-index 2fe706c..c382fd0 100644
+index 46194ad..d04abf7 100644
 --- a/packages/client/src/daemon-client.ts
 +++ b/packages/client/src/daemon-client.ts
-@@ -3022,6 +3022,21 @@ export class DaemonClient {
+@@ -3007,6 +3007,21 @@ export class DaemonClient {
      return { customName: payload.customName };
    }
  
@@ -1229,7 +1571,7 @@ index 3394c8e..12d34c1 100644
  
  describe("workspace descriptor message compatibility", () => {
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index a716d45..498fee7 100644
+index db72cd3..d935d18 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
 @@ -950,6 +950,14 @@ export const ProjectRenameRequestSchema = z.object({
@@ -1247,7 +1589,7 @@ index a716d45..498fee7 100644
  export const ProjectIconSetRequestSchema = z.object({
    type: z.literal("project.icon.set.request"),
    projectId: z.string(),
-@@ -2034,6 +2042,17 @@ export const ProjectRenameResponseSchema = z.object({
+@@ -2022,6 +2030,17 @@ export const ProjectRenameResponseSchema = z.object({
    payload: ProjectRenameResponsePayloadSchema,
  });
  
@@ -1265,7 +1607,7 @@ index a716d45..498fee7 100644
  export const ProjectIconSetResponseSchema = z.object({
    type: z.literal("project.icon.set.response"),
    payload: z.object({
-@@ -3184,6 +3203,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3172,6 +3191,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CloseItemsRequestMessageSchema,
    UpdateAgentRequestMessageSchema,
    ProjectRenameRequestSchema,
@@ -1273,7 +1615,7 @@ index a716d45..498fee7 100644
    ProjectIconSetRequestSchema,
    ProjectRemoveRequestSchema,
    WorkspaceTitleSetRequestSchema,
-@@ -3627,6 +3647,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -3612,6 +3632,8 @@ export const ServerInfoStatusPayloadSchema = z
          projectRemove: z.boolean().optional(),
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: z.boolean().optional(),
@@ -1282,7 +1624,7 @@ index a716d45..498fee7 100644
          // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
          worktreeRestore: z.boolean().optional(),
          // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
-@@ -3993,6 +4015,8 @@ export const WorkspaceDescriptorPayloadSchema = z
+@@ -3978,6 +4000,8 @@ export const WorkspaceDescriptorPayloadSchema = z
      // Identifies the project's stored custom icon; null means automatic.
      // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
      projectCustomIconRevision: z.string().nullable().optional(),
@@ -1291,7 +1633,7 @@ index a716d45..498fee7 100644
      projectRootPath: z.string(),
      workspaceDirectory: z.string().optional(),
      // COMPAT(worktreeSlug): added in v0.2.6, remove optional after 2027-01-31.
-@@ -4183,6 +4207,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
+@@ -4168,6 +4192,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
    projectCustomName: z.string().nullable().optional(),
    // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
    projectCustomIconRevision: z.string().nullable().optional(),
@@ -1300,7 +1642,7 @@ index a716d45..498fee7 100644
    // Fingerprints the effective icon, including automatic discovery and the
    // absence of an icon. Clients may persist icon results against this value.
    // COMPAT(projectIconCache): added in v0.2.7, remove optional after 2027-02-12.
-@@ -6885,6 +6911,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -6844,6 +6870,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    AgentRewindResponseMessageSchema,
    UpdateAgentResponseMessageSchema,
    ProjectRenameResponseSchema,
@@ -1309,7 +1651,7 @@ index a716d45..498fee7 100644
    ProjectRemoveResponseSchema,
    WorkspaceTitleSetResponseSchema,
 diff --git a/packages/server/src/server/authorization/operation-permissions.ts b/packages/server/src/server/authorization/operation-permissions.ts
-index fa26001..d6a5ecb 100644
+index 7ce3947..0b688c8 100644
 --- a/packages/server/src/server/authorization/operation-permissions.ts
 +++ b/packages/server/src/server/authorization/operation-permissions.ts
 @@ -144,6 +144,7 @@ const INBOUND_PERMISSION = {
@@ -1320,7 +1662,7 @@ index fa26001..d6a5ecb 100644
    "project.list.request": "workspace.read",
    "project.remove.request": "workspace.manage",
    "project.rename.request": "workspace.manage",
-@@ -369,6 +370,7 @@ const OUTBOUND_PERMISSION = {
+@@ -367,6 +368,7 @@ const OUTBOUND_PERMISSION = {
    "project.github.clone.response": "workspace.manage",
    "project.icon.get.response": "workspace.read",
    "project.icon.set.response": "workspace.manage",
@@ -1329,10 +1671,10 @@ index fa26001..d6a5ecb 100644
    "project.remove.response": "workspace.manage",
    "project.rename.response": "workspace.manage",
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index f83040c..fa63769 100644
+index c69033a..daf08e0 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -671,6 +671,10 @@ interface ClientActivity {
+@@ -660,6 +660,10 @@ interface ClientActivity {
    appVisibilityChangedAt: Date;
  }
  
@@ -1343,7 +1685,7 @@ index f83040c..fa63769 100644
  export class Session {
    readonly delivery = new SessionDelivery(
      (source, message) => {
-@@ -2714,6 +2718,8 @@ export class Session {
+@@ -2697,6 +2701,8 @@ export class Session {
    }
  
    private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -1352,7 +1694,7 @@ index f83040c..fa63769 100644
      switch (msg.type) {
        case "fetch_agents_request":
          return this.handleFetchAgents(msg);
-@@ -2731,10 +2737,6 @@ export class Session {
+@@ -2714,10 +2720,6 @@ export class Session {
          return this.handleCloseItemsRequest(msg);
        case "update_agent_request":
          return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
@@ -1363,7 +1705,7 @@ index f83040c..fa63769 100644
        case "send_agent_message_request":
          return this.handleSendAgentMessageRequest(msg);
        case "wait_for_finish_request":
-@@ -3437,6 +3439,81 @@ export class Session {
+@@ -3416,6 +3418,81 @@ export class Session {
      }
    }
  
@@ -1445,7 +1787,7 @@ index f83040c..fa63769 100644
    private async handleProjectRenameRequest(
      projectId: string,
      customName: string | null,
-@@ -5537,6 +5614,7 @@ export class Session {
+@@ -5516,6 +5593,7 @@ export class Session {
          : workspace.projectId,
        projectCustomName: resolvedProjectRecord?.customName ?? null,
        projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
@@ -1453,7 +1795,7 @@ index f83040c..fa63769 100644
        projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
        workspaceDirectory: workspace.cwd,
        worktreeSlug,
-@@ -5626,6 +5704,7 @@ export class Session {
+@@ -5605,6 +5683,7 @@ export class Session {
          : result.workspace.projectId,
        projectCustomName: projectRecord?.customName ?? null,
        projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
@@ -1461,7 +1803,7 @@ index f83040c..fa63769 100644
        projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
        workspaceDirectory: result.workspace.cwd,
        worktreeSlug: basename(result.worktree.worktreePath),
-@@ -5804,6 +5883,7 @@ export class Session {
+@@ -5783,6 +5862,7 @@ export class Session {
        projectDisplayName: resolveProjectDisplayName(project),
        projectCustomName: project.customName ?? null,
        projectCustomIconRevision: project.customIconRevision ?? null,
@@ -1546,10 +1888,10 @@ index 1be52bc..4a1c46e 100644
    const emitted: SessionOutboundMessage[] = [];
    const session = asTestSession(
 diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
-index 30a9e59..2ae2e50 100644
+index 7c533ce..302f650 100644
 --- a/packages/server/src/server/websocket-server.ts
 +++ b/packages/server/src/server/websocket-server.ts
-@@ -320,6 +320,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
+@@ -321,6 +321,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
        projectKey: input.projectKey ?? null,
        customName: null,
        customIconRevision: null,
@@ -1557,7 +1899,7 @@ index 30a9e59..2ae2e50 100644
        createdAt: input.timestamp,
        updatedAt: input.timestamp,
        archivedAt: null,
-@@ -1857,6 +1858,8 @@ export class VoiceAssistantWebSocketServer {
+@@ -1863,6 +1864,8 @@ export class VoiceAssistantWebSocketServer {
          projectRemove: true,
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: true,
@@ -1652,3 +1994,6 @@ index 64f6f1e..40fc57d 100644
      archivedAt: input.archivedAt ?? null,
    });
  }
+-- 
+2.43.0
+
