@@ -37,12 +37,14 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
     projectName: trimOptional(route.displayName) || projectId,
     projectKind: "unknown",
     iconWorkingDir,
+    groupName: null,
     hosts: [
       {
         serverId: route.serverId,
         projectId,
         iconWorkingDir,
         worktreeSupport: "unknown",
+        groupName: null,
       },
     ],
     workspaceKeys: [],
@@ -75,6 +77,7 @@ export function hostProjectFromWorkspace(input: {
     projectName: input.workspace.projectDisplayName || projectId,
     projectKind: input.workspace.projectKind,
     iconWorkingDir,
+    groupName: input.workspace.projectGroupName ?? null,
     hosts: [
       {
         serverId: input.serverId,
@@ -82,6 +85,7 @@ export function hostProjectFromWorkspace(input: {
         iconWorkingDir,
         worktreeSupport: canCreate ? "supported" : "unsupported",
         customIconRevision: input.workspace.projectCustomIconRevision,
+        groupName: input.workspace.projectGroupName ?? null,
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],
