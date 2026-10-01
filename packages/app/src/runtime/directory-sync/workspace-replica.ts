@@ -154,6 +154,7 @@ export class WorkspaceDirectoryReplica {
         projectDisplayName: project.projectDisplayName,
         projectCustomName: project.projectCustomName,
         projectCustomIconRevision: project.projectCustomIconRevision,
+        projectGroupName: project.projectGroupName,
         projectRootPath: project.projectRootPath,
         projectKind: project.projectKind,
       };
