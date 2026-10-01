@@ -413,6 +413,36 @@ describe("workspace registries", () => {
     expect(record?.displayName).toBe("acme/repo");
   });
 
+  test("persists group membership through a later project rename", async () => {
+    await projectRegistry.initialize();
+    const projectId = "remote:github.com/acme/repo";
+    await projectRegistry.upsert(
+      createPersistedProjectRecord({
+        projectId,
+        rootPath: "/home/me/work/repo",
+        kind: "git",
+        displayName: "acme/repo",
+        groupName: "Clients",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    );
+    await projectRegistry.update(projectId, (record) => ({
+      ...record,
+      customName: "Acme (work)",
+      updatedAt: "2026-03-02T00:00:00.000Z",
+    }));
+
+    const restartedRegistry = new FileBackedProjectRegistry(
+      path.join(tmpDir, "projects", "projects.json"),
+      logger,
+    );
+    await restartedRegistry.initialize();
+    const record = await restartedRegistry.get(projectId);
+    expect(record?.customName).toBe("Acme (work)");
+    expect(record?.groupName).toBe("Clients");
+  });
+
   test("creates, updates, archives, deletes, and lists workspace records", async () => {
     await workspaceRegistry.initialize();
     await workspaceRegistry.upsert(
