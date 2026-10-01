@@ -449,6 +449,8 @@ jobs:
             npm_package: "@kilocode/cli"
           - agent: kimi
             npm_package: "@moonshot-ai/kimi-code"
+          - agent: agy-acp
+            npm_package: "paseo-agy-acp"
           - agent: devspace
             npm_package: "@waishnav/devspace"
     steps:

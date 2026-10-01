@@ -1,0 +1,132 @@
+From 6980c0d1b711ae88b8cc0e63ed71b9eda401c31c Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Thu, 1 Oct 2026 21:53:10 +0000
+Subject: [PATCH] Add Antigravity ACP Docker mod
+
+---
+ docker/mods/agy-acp/Dockerfile                | 25 ++++++++++++++
+ .../root-layer/etc/paseo-mods/agy-acp/install | 34 +++++++++++++++++++
+ docs/docker.md                                | 34 +++++++++++++++++++
+ 3 files changed, 93 insertions(+)
+ create mode 100644 docker/mods/agy-acp/Dockerfile
+ create mode 100755 docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
+
+diff --git a/docker/mods/agy-acp/Dockerfile b/docker/mods/agy-acp/Dockerfile
+new file mode 100644
+index 0000000..ebb4b35
+--- /dev/null
++++ b/docker/mods/agy-acp/Dockerfile
+@@ -0,0 +1,25 @@
++# syntax=docker/dockerfile:1
++ARG BUSYBOX_IMAGE=busybox:1.37.0-uclibc
++ARG PASEO_MOD_NAME=agy-acp
++ARG PASEO_MOD_PACKAGE=paseo-agy-acp
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++
++FROM ${BUSYBOX_IMAGE} AS meta
++ARG PASEO_MOD_NAME
++ARG PASEO_MOD_PACKAGE
++ARG PASEO_MOD_PACKAGE_VERSION
++RUN set -eu; \
++    install -d "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package"; \
++    printf '%s\n' "${PASEO_MOD_PACKAGE_VERSION}" > "/root-layer/etc/paseo-mods/${PASEO_MOD_NAME}/package-version"
++
++FROM scratch
++ARG PASEO_MOD_NAME=agy-acp
++ARG PASEO_MOD_PACKAGE=paseo-agy-acp
++ARG PASEO_MOD_PACKAGE_VERSION=latest
++LABEL org.opencontainers.image.title="Paseo Docker Mod: ${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.name="${PASEO_MOD_NAME}" \
++      org.ovlerfork.paseo.mod.package="${PASEO_MOD_PACKAGE}" \
++      org.ovlerfork.paseo.mod.package.version="${PASEO_MOD_PACKAGE_VERSION}"
++COPY root-layer/ /
++COPY --from=meta /root-layer/ /
+diff --git a/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install b/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
+new file mode 100755
+index 0000000..880eaa8
+--- /dev/null
++++ b/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
+@@ -0,0 +1,34 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if command -v agy-acp >/dev/null 2>&1 && command -v paseo-agy-acp >/dev/null 2>&1; then
++  echo "[mod:agy-acp] agy-acp and paseo-agy-acp already on PATH; skipping install."
++  exit 0
++fi
++
++package="paseo-agy-acp"
++version_file="/etc/paseo-mods/agy-acp/package-version"
++if [[ -r "$version_file" ]]; then
++  version="$(tr -d '[:space:]' < "$version_file")"
++  if [[ -n "$version" ]]; then
++    package="${package}@${version}"
++  fi
++fi
++
++echo "[mod:agy-acp] installing ${package} with pnpm"
++# better-sqlite3 builds its native binding from source on installation.
++if ! command -v make >/dev/null 2>&1 || ! command -v g++ >/dev/null 2>&1; then
++  apt-get update
++  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential
++  rm -rf /var/lib/apt/lists/*
++fi
++paseo-mod-install node --allow-build=better-sqlite3 "${package}"
++
++for binary in agy-acp paseo-agy-acp; do
++  command -v "$binary" >/dev/null 2>&1 || {
++    echo "[mod:agy-acp] ERROR: ${package} did not install '${binary}' on PATH." >&2
++    exit 1
++  }
++done
++
++echo "[mod:agy-acp] done (run 'agy-acp --login' as the runtime user to set up the official kernel)."
+diff --git a/docs/docker.md b/docs/docker.md
+index b5464e6..45d7b67 100644
+--- a/docs/docker.md
++++ b/docs/docker.md
+@@ -178,6 +178,40 @@ and the base image already ships Node, pnpm, and uv, so they need no mod.
+ `amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
+ user still has to run `amp login` inside the container.
+ 
++The Antigravity ACP adapter is available as a separate mod:
++
++| Mod tag   | Package         | Binaries                  |
++| --------- | --------------- | ------------------------- |
++| `agy-acp` | `paseo-agy-acp` | `agy-acp`, `paseo-agy-acp` |
++
++Add `ghcr.io/ovlerfork/mods:agy-acp` to `DOCKER_MODS`, then log in as the
++runtime user:
++
++```bash
++docker exec -it --user paseo paseo agy-acp --login
++```
++
++The first login downloads Google's official Antigravity ACP kernel, about
++320 MiB, into `~/.local/opt`. Keep the runtime home mounted at `/home/paseo`
++so the downloaded kernel and login state survive container recreation. For
++`PASEO_RUNTIME_USER=root`, run login as root and persist `/root` instead.
++Configure the provider in `$PASEO_HOME/config.json` or `~/.paseo/config.json`:
++
++```json
++{
++  "providers": {
++    "antigravity": {
++      "type": "acp",
++      "command": ["agy-acp"]
++    }
++  }
++}
++```
++
++Restart Paseo after updating its provider configuration. For accounts shared
++by multiple agents, follow the adapter's [Admission setup instructions](https://github.com/tiezbro/paseo-agy-acp/blob/main/README.zh-CN.md)
++to prepare an account-specific state directory and enable Admission explicitly.
++
+ DevSpace installs as a tool mod rather than as an agent provider:
+ 
+ | Mod tag    | Package              | Binary     |
+-- 
+2.43.0
+

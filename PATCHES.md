@@ -30,6 +30,7 @@ The current series carries fork-owned source patches again:
 - `0012-fix-docker-expose-mod-binaries-to-SSH-shells.patch` adds `/etc/profile.d/paseo-path.sh` and sources it from `/etc/bash.bashrc` so the pnpm mod prefix (`/usr/local/share/pnpm/bin`) is on `PATH` in SSH login and interactive shells, where sshd otherwise supplies its own default `PATH`.
 - `0013-fix-desktop-use-fork-github-releases.patch` configures the desktop updater to read releases from the `ovlerfork/paseo` fork.
 - `0014-feat-sidebar-project-groups.patch` adds named project groups to the sidebar, with shared membership persistence and daemon protocol support.
+- `0016-fix-docker-add-agy-acp-Docker-mod.patch` adds an `agy-acp` Docker Mod for the version-pinned `paseo-agy-acp` Antigravity ACP adapter, allows its `better-sqlite3` native build, and documents runtime-user login, home persistence, and explicit provider setup.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Fork Release Build` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 
