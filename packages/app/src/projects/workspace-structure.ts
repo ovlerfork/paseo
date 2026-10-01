@@ -8,6 +8,7 @@ export interface WorkspaceStructureHostPlacement {
   worktreeSupport: "supported" | "unsupported" | "unknown";
   customIconRevision?: string | null;
   iconRevision?: string;
+  groupName?: string | null;
 }
 
 export interface WorkspaceStructureProject {
@@ -16,6 +17,7 @@ export interface WorkspaceStructureProject {
   projectName: string;
   projectKind: WorkspaceDescriptor["projectKind"] | "unknown";
   iconWorkingDir: string;
+  groupName?: string | null;
   hosts: WorkspaceStructureHostPlacement[];
   workspaceKeys: string[];
 }
@@ -45,6 +47,7 @@ interface ProjectDraft {
   hasCustomName: boolean;
   projectKind: WorkspaceDescriptor["projectKind"];
   iconWorkingDir: string;
+  groupName: string | null;
   hosts: Map<string, WorkspaceStructureHostPlacement>;
   workspaces: WorkspaceSortItem[];
 }
@@ -107,6 +110,7 @@ export function buildWorkspaceStructureProjects(input: {
       projectName: draft.projectName,
       projectKind: draft.projectKind,
       iconWorkingDir: draft.iconWorkingDir,
+      groupName: projectGroupNameForHosts(draft.hosts.values()),
       hosts: Array.from(draft.hosts.values()),
       workspaceKeys: draft.workspaces
         .sort(input.workspaceSort ? compareWorkspaceTimes : compareWorkspaceStructureItems)
@@ -171,6 +175,7 @@ function addProjectToView(input: {
     worktreeSupport: project.projectKind === "git" ? "supported" : "unsupported",
     customIconRevision: project.projectCustomIconRevision,
     iconRevision: project.projectIconRevision,
+    groupName: project.projectGroupName ?? null,
   };
   const draft = byProject.get(viewKey);
   if (!draft) {
@@ -184,6 +189,7 @@ function addProjectToView(input: {
       hasCustomName: Boolean(project.projectCustomName),
       projectKind: project.projectKind,
       iconWorkingDir: project.projectRootPath,
+      groupName: project.projectGroupName ?? null,
       hosts: new Map([[serverId, placement]]),
       workspaces: [],
     });
@@ -195,6 +201,12 @@ function addProjectToView(input: {
     draft.hosts.set(serverId, placement);
   }
   return viewKey;
+}
+
+function projectGroupNameForHosts(hosts: Iterable<WorkspaceStructureHostPlacement>): string | null {
+  const names = new Set<string | null>();
+  for (const host of hosts) names.add(host.groupName ?? null);
+  return names.size === 1 ? (names.values().next().value ?? null) : null;
 }
 
 function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
