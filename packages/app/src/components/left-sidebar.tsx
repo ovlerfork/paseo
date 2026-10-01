@@ -1,6 +1,7 @@
 import { SidebarViewSlot } from "@/plugins/sidebar-view";
 import { useAddHost } from "@/hosts/add-host";
 import { router } from "expo-router";
+import { withUnistyles } from "react-native-unistyles";
 import {
   CircleGauge,
   FolderPlus,
@@ -97,6 +98,8 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 const FOOTER_ROW_PADDING = SPACING[2];
 
 const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
+const ThemedFolderPlus = withUnistyles(FolderPlus);
+const workspaceHeaderIconColor = (theme: SidebarTheme) => ({ color: theme.colors.foregroundMuted });
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
@@ -894,9 +897,28 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
   return (
     <SidebarSectionHeader title="Workspaces">
+      {onCreateProjectGroup ? (
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New project group"
+              hitSlop={6}
+              onPress={onCreateProjectGroup}
+              style={styles.workspacesSectionActionButton}
+              testID="sidebar-create-project-group"
+            >
+              <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label="New project group" />
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>
@@ -911,9 +933,9 @@ function WorkspacesSectionHeader() {
   );
 }
 
-// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
-// renders (WorkspacesSectionHeader takes no props).
-const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
+function workspacesSectionHeaderElement(onCreateProjectGroup?: () => void) {
+  return <WorkspacesSectionHeader onCreateProjectGroup={onCreateProjectGroup} />;
+}
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
@@ -926,6 +948,13 @@ const staticStyles = RNStyleSheet.create({
 });
 
 const styles = StyleSheet.create((theme) => ({
+  workspacesSectionActionButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.lg,
+  },
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
     gap: 2,
