@@ -162,7 +162,8 @@ export class WorkspaceDirectoryReplica {
       { kind: "project", type: "upsert", id: project.projectId, value: project },
     ];
     for (const workspaceId of this.workspaceIdsByProject.get(project.projectId) ?? []) {
-      const workspace = this.workspaces.get(workspaceId);
+      const previous = this.workspaces.get(workspaceId);
+      const workspace = previous && { ...previous, projectGroupName: project.projectGroupName };
       if (!workspace) continue;
       const next = {
         ...workspace,
