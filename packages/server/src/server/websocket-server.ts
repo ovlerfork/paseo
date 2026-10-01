@@ -348,6 +348,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
       projectKey: input.projectKey ?? null,
       customName: null,
       customIconRevision: null,
+      groupName: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
@@ -2119,6 +2120,8 @@ export class VoiceAssistantWebSocketServer {
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
+        // Fork capability advertised only by servers that implement project groups.
+        projectGroups: true,
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: true,
         // COMPAT(projectSuggestions): added in v0.14.1, remove gate after 2027-05-01.
