@@ -163,6 +163,10 @@ import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
+import {
+  countProjectGroupWorkspaces,
+  type ProjectGroupCounts,
+} from "@/utils/sidebar-project-group-counts";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -256,7 +260,7 @@ interface SidebarWorkspaceListProps {
 
 interface ProjectGroupHeaderProps {
   groupName: string;
-  projectCount: number;
+  counts: ProjectGroupCounts;
   collapsed: boolean;
   onToggle: (groupName: string) => void;
   onEdit: (groupName: string) => void;
@@ -264,7 +268,7 @@ interface ProjectGroupHeaderProps {
 
 const ProjectGroupHeader = memo(function ProjectGroupHeader({
   groupName,
-  projectCount,
+  counts,
   collapsed,
   onToggle,
   onEdit,
@@ -288,7 +292,27 @@ const ProjectGroupHeader = memo(function ProjectGroupHeader({
         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.projectGroupTitle}>
           {groupName}
         </Text>
-        <Text style={styles.projectGroupCount}>{projectCount}</Text>
+        <Text
+          style={styles.projectGroupCount}
+          accessibilityLabel={`${counts.attention} awaiting review, ${counts.needsInput} need input, ${counts.running} working, ${counts.projects} repositories`}
+        >
+          {counts.attention > 0 ? (
+            <>
+              <Text style={styles.projectGroupAttentionCount}>{counts.attention}</Text>/
+            </>
+          ) : null}
+          {counts.needsInput > 0 ? (
+            <>
+              <Text style={styles.projectGroupNeedsInputCount}>{counts.needsInput}</Text>/
+            </>
+          ) : null}
+          {counts.running > 0 ? (
+            <>
+              <Text style={styles.projectGroupRunningCount}>{counts.running}</Text>/
+            </>
+          ) : null}
+          {counts.projects}
+        </Text>
       </Pressable>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
@@ -2439,6 +2463,19 @@ function ProjectModeList({
     }
     return { groups, ungrouped };
   }, [unpinnedProjects]);
+  const groupCountsByName = useMemo(() => {
+    const counts = new Map<string, ProjectGroupCounts>();
+    for (const groupName of groupedProjects.groups.keys()) {
+      counts.set(
+        groupName,
+        countProjectGroupWorkspaces(
+          projects.filter((project) => project.groupName === groupName),
+          workspaceEntriesByKey,
+        ),
+      );
+    }
+    return counts;
+  }, [projects, groupedProjects.groups, workspaceEntriesByKey]);
   const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
   const toggleGroup = useCallback((groupName: string) => {
     setCollapsedGroupNames((current) => {
@@ -2463,7 +2500,7 @@ function ProjectModeList({
           <View key={groupName} style={styles.projectGroupBlock}>
             <ProjectGroupHeader
               groupName={groupName}
-              projectCount={groupProjects.length}
+              counts={groupCountsByName.get(groupName)!}
               collapsed={collapsedGroupNames.has(groupName)}
               onToggle={toggleGroup}
               onEdit={editProjectGroup}
@@ -2620,7 +2657,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
-  projectGroupCount: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  projectGroupCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    flexShrink: 0,
+  },
+  projectGroupAttentionCount: { color: theme.colors.statusDotSuccess },
+  projectGroupNeedsInputCount: { color: theme.colors.statusDotWarning },
+  projectGroupRunningCount: { color: theme.colors.statusDotRunning },
   projectGroupEditButton: {
     width: 28,
     height: 28,
