@@ -13,7 +13,7 @@ import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { resolveDesktopSidebarWidth } from "@/components/desktop-sidebar-layout";
 import {
@@ -61,6 +61,8 @@ import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
 const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
+const ThemedFolderPlus = withUnistyles(FolderPlus);
+const workspaceHeaderIconColor = (theme: SidebarTheme) => ({ color: theme.colors.foregroundMuted });
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
@@ -68,6 +70,7 @@ interface SidebarSharedProps {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
+  allProjects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   hasActiveProjectFilter: boolean;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -117,6 +120,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
 
   const {
     projects,
+    allProjects,
     hasProjectsBeforeFilter,
     resolvedProjectFilters,
     workspaceEntriesByKey,
@@ -211,6 +215,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     projectIconTargets,
     pinnedGroups,
     projects,
+    allProjects,
     hasProjectsBeforeFilter,
     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
     workspaceEntriesByKey,
@@ -502,6 +507,7 @@ function MobileSidebar({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -584,6 +590,7 @@ function MobileSidebar({
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
             projects={projects}
+            allProjects={allProjects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
             workspaceEntriesByKey={workspaceEntriesByKey}
@@ -594,7 +601,7 @@ function MobileSidebar({
             onImportSession={handleImportSession}
             parentGestureRef={closeGestureRef}
             dragGestureHostActive={active}
-            listHeaderComponent={workspacesSectionHeaderElement}
+            listHeaderComponent={renderWorkspacesSectionHeader}
           />
         )}
 
@@ -618,6 +625,7 @@ function DesktopSidebar({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -762,6 +770,7 @@ function DesktopSidebar({
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
             projects={projects}
+            allProjects={allProjects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
             workspaceEntriesByKey={workspaceEntriesByKey}
@@ -769,7 +778,7 @@ function DesktopSidebar({
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
             onImportSession={handleImportSession}
-            listHeaderComponent={workspacesSectionHeaderElement}
+            listHeaderComponent={renderWorkspacesSectionHeader}
           />
         )}
 
@@ -795,11 +804,30 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
   return (
     <View style={styles.workspacesSectionHeader}>
       <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
       <View style={styles.workspacesSectionActions}>
+        {onCreateProjectGroup ? (
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="New project group"
+                hitSlop={6}
+                onPress={onCreateProjectGroup}
+                style={styles.workspacesSectionActionButton}
+                testID="sidebar-create-project-group"
+              >
+                <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <IconTooltipContent label="New project group" />
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <View>
@@ -815,9 +843,9 @@ function WorkspacesSectionHeader() {
   );
 }
 
-// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
-// renders (WorkspacesSectionHeader takes no props).
-const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
+function renderWorkspacesSectionHeader(onCreateProjectGroup?: () => void) {
+  return <WorkspacesSectionHeader onCreateProjectGroup={onCreateProjectGroup} />;
+}
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
@@ -864,6 +892,13 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+  },
+  workspacesSectionActionButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.lg,
   },
   sidebarContent: {
     flex: 1,
