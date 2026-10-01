@@ -36,7 +36,16 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
 import { type GestureType } from "react-native-gesture-handler";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
-import { ExternalLink, Settings, MoreVertical, Plus, Trash2 } from "lucide-react-native";
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Pencil,
+  Settings,
+  MoreVertical,
+  Plus,
+  Trash2,
+} from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
@@ -151,6 +160,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
+import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -163,6 +173,9 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedPencil = withUnistyles(Pencil);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -216,6 +229,7 @@ interface SidebarWorkspaceListProps {
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
+  allProjects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
   hasActiveProjectFilter: boolean;
@@ -232,11 +246,68 @@ interface SidebarWorkspaceListProps {
   listFooterComponent?: ReactElement | null;
   // Rendered inside the scroll area, below the Pinned section and above the workspace
   // list. Holds the "Workspaces" section header so pinned items sit above it.
-  listHeaderComponent?: ReactElement | null;
+  listHeaderComponent?: (onCreateProjectGroup?: () => void) => ReactElement | null;
   /** Gesture ref for coordinating with parent gestures (e.g., sidebar close) */
   parentGestureRef?: MutableRefObject<GestureType | undefined>;
   dragGestureHostActive?: boolean;
 }
+
+interface ProjectGroupHeaderProps {
+  groupName: string;
+  projectCount: number;
+  collapsed: boolean;
+  onToggle: (groupName: string) => void;
+  onEdit: (groupName: string) => void;
+}
+
+const ProjectGroupHeader = memo(function ProjectGroupHeader({
+  groupName,
+  projectCount,
+  collapsed,
+  onToggle,
+  onEdit,
+}: ProjectGroupHeaderProps) {
+  const handleToggle = useCallback(() => onToggle(groupName), [groupName, onToggle]);
+  const handleEdit = useCallback(() => onEdit(groupName), [groupName, onEdit]);
+
+  return (
+    <View style={styles.projectGroupHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${groupName}`}
+        onPress={handleToggle}
+        style={styles.projectGroupToggle}
+      >
+        {collapsed ? (
+          <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />
+        ) : (
+          <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />
+        )}
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.projectGroupTitle}>
+          {groupName}
+        </Text>
+        <Text style={styles.projectGroupCount}>{projectCount}</Text>
+      </Pressable>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${groupName}`}
+            hitSlop={6}
+            onPress={handleEdit}
+            style={styles.projectGroupEditButton}
+            testID={`sidebar-edit-project-group-${groupName}`}
+          >
+            <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <Text>Edit group</Text>
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
+});
 
 interface ProjectHeaderRowProps {
   project: SidebarProjectEntry;
@@ -1886,6 +1957,7 @@ export function SidebarWorkspaceList({
   projectIconTargets,
   pinnedGroups,
   projects,
+  allProjects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
@@ -1975,7 +2047,7 @@ export function SidebarWorkspaceList({
         supportsPinningByServerId={supportsPinningByServerId}
         onToggleWorkspacePin={onToggleWorkspacePin}
         onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
-        listHeaderComponent={listHeaderComponent}
+        listHeaderComponent={listHeaderComponent?.()}
         sidebarFilterEmpty={sidebarFilterEmpty}
         parentGestureRef={parentGestureRef}
         dragGestureHostActive={dragGestureHostActive}
@@ -1983,6 +2055,7 @@ export function SidebarWorkspaceList({
     ) : (
       <ProjectModeList
         projects={projects}
+        allProjects={allProjects}
         pinnedGroups={pinnedGroups}
         workspaceEntriesByKey={workspaceEntriesByKey}
         projectIconByProjectViewKey={projectIconByProjectViewKey}
@@ -2079,6 +2152,7 @@ function SidebarGroupedModeList({
 
 function ProjectModeList({
   projects,
+  allProjects,
   pinnedGroups,
   workspaceEntriesByKey,
   projectIconByProjectViewKey,
@@ -2120,6 +2194,15 @@ function ProjectModeList({
   onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
 }) {
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
+  const [editingGroupName, setEditingGroupName] = useState<string | null | undefined>(undefined);
+  const groupHostIds = useMemo(
+    () =>
+      Array.from(
+        new Set(allProjects.flatMap((project) => project.hosts.map((host) => host.serverId))),
+      ),
+    [allProjects],
+  );
+  const supportsProjectGroupsByServerId = useHostFeatureMap(groupHostIds, "projectGroups");
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -2394,24 +2477,70 @@ function ProjectModeList({
     ],
   );
 
+  const groupedProjects = useMemo(() => {
+    const groups = new Map<string, SidebarProjectEntry[]>();
+    const ungrouped: SidebarProjectEntry[] = [];
+    for (const project of unpinnedProjects) {
+      if (!project.groupName) ungrouped.push(project);
+      else {
+        const entries = groups.get(project.groupName) ?? [];
+        entries.push(project);
+        groups.set(project.groupName, entries);
+      }
+    }
+    return { groups, ungrouped };
+  }, [unpinnedProjects]);
+  const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
+  const toggleGroup = useCallback((groupName: string) => {
+    setCollapsedGroupNames((current) => {
+      const next = new Set(current);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
+  }, []);
+  const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
+  const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
+  const canCreateProjectGroup = groupHostIds.some(
+    (serverId) => supportsProjectGroupsByServerId.get(serverId) === true,
+  );
+  const editProjectGroup = useCallback((groupName: string) => setEditingGroupName(groupName), []);
   const projectBody =
     projects.length === 0 ? (
       <SidebarProjectEmptyState onAddProject={onAddProject} onImportSession={onImportSession} />
     ) : (
-      <DraggableList
-        testID="sidebar-project-list"
-        data={unpinnedProjects}
-        keyExtractor={projectViewKeyExtractor}
-        renderItem={renderProject}
-        onDragEnd={handleProjectDragEnd}
-        extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
-        scrollEnabled={false}
-        useDragHandle
-        nestable={platformIsNative}
-        simultaneousGestureRef={parentGestureRef}
-        gestureHostPresented={dragGestureHostActive}
-        containerStyle={styles.projectListContainer}
-      />
+      <>
+        {Array.from(groupedProjects.groups.entries()).map(([groupName, groupProjects]) => (
+          <View key={groupName} style={styles.projectGroupBlock}>
+            <ProjectGroupHeader
+              groupName={groupName}
+              projectCount={groupProjects.length}
+              collapsed={collapsedGroupNames.has(groupName)}
+              onToggle={toggleGroup}
+              onEdit={editProjectGroup}
+            />
+            {!collapsedGroupNames.has(groupName)
+              ? groupProjects.map((project) =>
+                  renderProjectBlock(project, { drag: () => {}, isDragging: false }),
+                )
+              : null}
+          </View>
+        ))}
+        <DraggableList
+          testID="sidebar-project-list"
+          data={groupedProjects.ungrouped}
+          keyExtractor={projectViewKeyExtractor}
+          renderItem={renderProject}
+          onDragEnd={handleProjectDragEnd}
+          extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
+          scrollEnabled={false}
+          useDragHandle
+          nestable={platformIsNative}
+          simultaneousGestureRef={parentGestureRef}
+          gestureHostPresented={dragGestureHostActive}
+          containerStyle={styles.projectListContainer}
+        />
+      </>
     );
 
   const content = (
@@ -2455,8 +2584,9 @@ function ProjectModeList({
       {unpinnedProjects.length > 0 ||
       hasActiveHostFilter ||
       hasActiveProjectFilter ||
-      sidebarFilterEmpty
-        ? listHeaderComponent
+      sidebarFilterEmpty ||
+      canCreateProjectGroup
+        ? listHeaderComponent?.(canCreateProjectGroup ? openNewProjectGroup : undefined)
         : null}
       {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
       {listFooterComponent}
@@ -2464,28 +2594,37 @@ function ProjectModeList({
   );
 
   return (
-    <View style={styles.container}>
-      {platformIsNative ? (
-        <NestableScrollContainer
-          {...nativeScrollGestureProps}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </NestableScrollContainer>
-      ) : (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </ScrollView>
-      )}
-    </View>
+    <>
+      <ProjectGroupsSheet
+        visible={editingGroupName !== undefined}
+        initialGroupName={editingGroupName ?? null}
+        projects={allProjects}
+        capableHosts={supportsProjectGroupsByServerId}
+        onClose={closeProjectGroupsSheet}
+      />
+      <View style={styles.container}>
+        {platformIsNative ? (
+          <NestableScrollContainer
+            {...nativeScrollGestureProps}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            testID="sidebar-project-workspace-list-scroll"
+          >
+            {content}
+          </NestableScrollContainer>
+        ) : (
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            testID="sidebar-project-workspace-list-scroll"
+          >
+            {content}
+          </ScrollView>
+        )}
+      </View>
+    </>
   );
 }
 
@@ -2505,6 +2644,36 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectListContainer: {
     width: "100%",
+  },
+  projectGroupBlock: { marginBottom: theme.spacing[2] },
+  projectGroupHeader: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[2],
+  },
+  projectGroupToggle: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  projectGroupTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "500",
+    flex: 1,
+    minWidth: 0,
+  },
+  projectGroupCount: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  projectGroupEditButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.lg,
+    marginLeft: theme.spacing[1],
   },
   pinnedSection: {
     marginBottom: theme.spacing[1],
