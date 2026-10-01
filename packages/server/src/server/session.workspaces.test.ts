@@ -8051,6 +8051,71 @@ test("project.rename.request stores customName and emits an updated workspace de
   });
 });
 
+test("project.group.set.request persists the group and publishes updated descriptors", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });
+
+  const project = createPersistedProjectRecord({
+    projectId: "prj_group",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "acme/repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-group",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const projects = new Map([[project.projectId, project]]);
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.upsert = async (record: unknown) => {
+    const updated = record as typeof project;
+    projects.set(updated.projectId, updated);
+  };
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async (id: string) =>
+    id === workspace.workspaceId ? workspace : null;
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "sub-group-workspaces",
+    subscribe: { subscriptionId: "sub-group-workspaces" },
+  });
+
+  await session.handleMessage({
+    type: "project.group.set.request",
+    projectId: project.projectId,
+    groupName: "  Clients  ",
+    requestId: "req-group-set",
+  });
+
+  expect(findByType(emitted, "project.group.set.response")?.payload).toEqual({
+    requestId: "req-group-set",
+    projectId: project.projectId,
+    accepted: true,
+    groupName: "Clients",
+    error: null,
+  });
+  expect(projects.get(project.projectId)?.groupName).toBe("Clients");
+  expect(findByType(emitted, "project.update")?.payload).toMatchObject({
+    kind: "upsert",
+    project: { projectId: project.projectId, projectGroupName: "Clients" },
+  });
+  expect(findByType(emitted, "workspace_update")?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: { id: workspace.workspaceId, projectGroupName: "Clients" },
+  });
+});
+
 test("project.rename.request updates a project with no workspaces", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = asTestSession(
