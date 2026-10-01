@@ -110,6 +110,7 @@ it("commits the authoritative snapshot before buffered project updates", () => {
           projectKey: "remote:github.com/acme/attached",
           projectDisplayName: "Renamed attached project",
           projectCustomName: "Personal name",
+          projectGroupName: "Clients",
           projectRootPath: "/moved/attached",
           projectKind: "directory",
         },
@@ -131,11 +132,13 @@ it("commits the authoritative snapshot before buffered project updates", () => {
   expect(session?.workspaces.get(attachedMain.id)).toMatchObject({
     projectDisplayName: "Renamed attached project",
     projectCustomName: "Personal name",
+    projectGroupName: "Clients",
     projectRootPath: "/moved/attached",
     projectKind: "directory",
   });
   expect(session?.workspaces.get(attachedFeature.id)).toMatchObject({
     projectDisplayName: "Renamed attached project",
+    projectGroupName: "Clients",
     projectRootPath: "/moved/attached",
   });
   expect(session?.workspaces.has(removed.id)).toBe(false);
