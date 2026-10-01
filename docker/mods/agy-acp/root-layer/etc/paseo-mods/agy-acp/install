@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v agy-acp >/dev/null 2>&1 && command -v paseo-agy-acp >/dev/null 2>&1; then
+  echo "[mod:agy-acp] agy-acp and paseo-agy-acp already on PATH; skipping install."
+  exit 0
+fi
+
+package="paseo-agy-acp"
+version_file="/etc/paseo-mods/agy-acp/package-version"
+if [[ -r "$version_file" ]]; then
+  version="$(tr -d '[:space:]' < "$version_file")"
+  if [[ -n "$version" ]]; then
+    package="${package}@${version}"
+  fi
+fi
+
+echo "[mod:agy-acp] installing ${package} with pnpm"
+# better-sqlite3 builds its native binding from source on installation.
+if ! command -v make >/dev/null 2>&1 || ! command -v g++ >/dev/null 2>&1; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential
+  rm -rf /var/lib/apt/lists/*
+fi
+paseo-mod-install node --allow-build=better-sqlite3 "${package}"
+
+for binary in agy-acp paseo-agy-acp; do
+  command -v "$binary" >/dev/null 2>&1 || {
+    echo "[mod:agy-acp] ERROR: ${package} did not install '${binary}' on PATH." >&2
+    exit 1
+  }
+done
+
+echo "[mod:agy-acp] done (run 'agy-acp --login' as the runtime user to set up the official kernel)."
