@@ -178,6 +178,40 @@ and the base image already ships Node, pnpm, and uv, so they need no mod.
 `amp-acp` is only the ACP adapter; the mod also installs the Amp CLI, and the
 user still has to run `amp login` inside the container.
 
+The Antigravity ACP adapter is available as a separate mod:
+
+| Mod tag   | Package         | Binaries                  |
+| --------- | --------------- | ------------------------- |
+| `agy-acp` | `paseo-agy-acp` | `agy-acp`, `paseo-agy-acp` |
+
+Add `ghcr.io/ovlerfork/mods:agy-acp` to `DOCKER_MODS`, then log in as the
+runtime user:
+
+```bash
+docker exec -it --user paseo paseo agy-acp --login
+```
+
+The first login downloads Google's official Antigravity ACP kernel, about
+320 MiB, into `~/.local/opt`. Keep the runtime home mounted at `/home/paseo`
+so the downloaded kernel and login state survive container recreation. For
+`PASEO_RUNTIME_USER=root`, run login as root and persist `/root` instead.
+Configure the provider in `$PASEO_HOME/config.json` or `~/.paseo/config.json`:
+
+```json
+{
+  "providers": {
+    "antigravity": {
+      "type": "acp",
+      "command": ["agy-acp"]
+    }
+  }
+}
+```
+
+Restart Paseo after updating its provider configuration. For accounts shared
+by multiple agents, follow the adapter's [Admission setup instructions](https://github.com/tiezbro/paseo-agy-acp/blob/main/README.zh-CN.md)
+to prepare an account-specific state directory and enable Admission explicitly.
+
 DevSpace installs as a tool mod rather than as an agent provider:
 
 | Mod tag    | Package              | Binary     |
