@@ -1123,6 +1123,7 @@ export const fr: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "Préférences d'affichage",
       heading: "Affichage",
