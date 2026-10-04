@@ -22,6 +22,8 @@ import {
   SIDEBAR_RESIZE_FAIL_OFFSET,
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { SidebarExpansionMenuContent } from "@/components/sidebar/sidebar-expansion-menu";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
@@ -810,28 +812,40 @@ function DesktopSidebar({
 }
 
 function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+      <ContextMenu>
+        <ContextMenuTrigger
+          accessibilityLabel={t("sidebar.expansion.title")}
+          testID="sidebar-workspaces-expansion-settings"
+        >
+          <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+        </ContextMenuTrigger>
+        <SidebarExpansionMenuContent />
+      </ContextMenu>
       <View style={styles.workspacesSectionActions}>
         {onCreateProjectGroup ? (
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="New project group"
-                hitSlop={6}
-                onPress={onCreateProjectGroup}
-                style={styles.workspacesSectionActionButton}
-                testID="sidebar-create-project-group"
-              >
-                <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
-              </Pressable>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="center" offset={8}>
-              <IconTooltipContent label="New project group" />
-            </TooltipContent>
-          </Tooltip>
+          <ContextMenu>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <ContextMenuTrigger
+                  accessibilityRole="button"
+                  accessibilityLabel={t("sidebar.expansion.trigger")}
+                  hitSlop={6}
+                  onPress={onCreateProjectGroup}
+                  style={styles.workspacesSectionActionButton}
+                  testID="sidebar-create-project-group"
+                >
+                  <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+                </ContextMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <IconTooltipContent label={t("sidebar.expansion.trigger")} />
+              </TooltipContent>
+            </Tooltip>
+            <SidebarExpansionMenuContent />
+          </ContextMenu>
         ) : null}
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
