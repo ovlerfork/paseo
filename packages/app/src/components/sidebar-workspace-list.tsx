@@ -2527,15 +2527,12 @@ function ProjectModeList({
     }
     return counts;
   }, [projects, groupedProjects.groups, workspaceEntriesByKey]);
-  const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
-  const toggleGroup = useCallback((groupName: string) => {
-    setCollapsedGroupNames((current) => {
-      const next = new Set(current);
-      if (next.has(groupName)) next.delete(groupName);
-      else next.add(groupName);
-      return next;
-    });
-  }, []);
+  const collapsedGroupNames = useSidebarCollapsedSectionsStore(
+    (state) => state.collapsedProjectGroupNames,
+  );
+  const toggleGroup = useSidebarCollapsedSectionsStore(
+    (state) => state.toggleProjectGroupCollapsed,
+  );
   const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
   const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
   const canCreateProjectGroup = groupHostIds.some(
