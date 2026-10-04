@@ -153,6 +153,18 @@ describe("buildSidebarProjection", () => {
     ]);
   });
 
+  it("numbers only pinned chats when their project group is collapsed", () => {
+    const input = projectionInput();
+    input.projects[0]!.groupName = "Development";
+    const projection = buildSidebarProjection({
+      ...input,
+      collapsedProjectGroupNames: new Set(["Development"]),
+    });
+    expect(projection.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "pinned" },
+    ]);
+  });
+
   it("keeps pinned chats above status groups and removes them from those groups", () => {
     const projection = buildSidebarProjection(projectionInput({ groupMode: "status" }));
 
