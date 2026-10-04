@@ -44,6 +44,7 @@ export interface SidebarProjectionInput {
   groupMode: SidebarGroupMode;
   pinnedCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
+  collapsedProjectGroupNames?: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
 }
 
@@ -70,7 +71,11 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
     sections.push(
       ...pinnedGroups.unpinnedProjects.map((project) => ({
         workspaces: project.workspaces,
-        collapsed: input.collapsedProjectKeys.has(project.viewKey),
+        collapsed:
+          input.collapsedProjectKeys.has(project.viewKey) ||
+          (project.groupName
+            ? input.collapsedProjectGroupNames?.has(project.groupName) === true
+            : false),
       })),
     );
   } else {
