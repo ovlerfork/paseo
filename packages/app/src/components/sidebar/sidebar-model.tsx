@@ -1,5 +1,12 @@
 import { useTranslation } from "react-i18next";
-import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
 import {
   useSidebarWorkspacesList,
   type SidebarProjectEntry,
@@ -17,6 +24,10 @@ import {
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
+import {
+  sidebarActivity,
+  type SidebarExpansionBranch,
+} from "@/stores/sidebar-collapsed-sections-store/state";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
 import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
@@ -68,6 +79,10 @@ export function SidebarModelProvider({
   const collapsedWorkspaceGroupKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedWorkspaceGroupKeys,
   );
+  const collapsedProjectGroupNames = useSidebarCollapsedSectionsStore(
+    (state) => state.collapsedProjectGroupNames,
+  );
+  const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
@@ -151,11 +166,13 @@ export function SidebarModelProvider({
       groupMode,
       pinnedCollapsed,
       collapsedProjectKeys,
+      collapsedProjectGroupNames,
       collapsedWorkspaceGroupKeys,
       t,
     }),
     [
       collapsedProjectKeys,
+      collapsedProjectGroupNames,
       collapsedWorkspaceGroupKeys,
       groupMode,
       list.projectNamesByViewKey,
@@ -168,6 +185,44 @@ export function SidebarModelProvider({
     ],
   );
   const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
+  const expansionBranches = useMemo(() => {
+    const activityFor = (keys: Iterable<string>) =>
+      sidebarActivity([...keys].map((key) => filteredWorkspaceEntriesByKey.get(key)?.statusBucket));
+    const branches: SidebarExpansionBranch[] = projection.pinnedGroups.unpinnedProjects.map(
+      (project) => ({
+        kind: "project",
+        key: project.viewKey,
+        activity: activityFor(project.workspaces.map((workspace) => workspace.workspaceKey)),
+      }),
+    );
+    const groups = new Map<string, string[]>();
+    for (const project of projection.pinnedGroups.unpinnedProjects) {
+      if (!project.groupName) continue;
+      const keys = groups.get(project.groupName) ?? [];
+      keys.push(...project.workspaces.map((workspace) => workspace.workspaceKey));
+      groups.set(project.groupName, keys);
+    }
+    for (const [key, keys] of groups)
+      branches.push({ kind: "projectGroup", key, activity: activityFor(keys) });
+    for (const group of projection.workspaceGroups)
+      branches.push({
+        kind: "workspaceGroup",
+        key: group.key,
+        activity: sidebarActivity(group.rows.map((workspace) => workspace.statusBucket)),
+      });
+    branches.push({
+      kind: "pinned",
+      key: "pinned",
+      activity: activityFor(
+        projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
+      ),
+    });
+    return branches;
+  }, [projection.pinnedGroups, projection.workspaceGroups, filteredWorkspaceEntriesByKey]);
+  useLayoutEffect(() => {
+    if (active === false) return;
+    synchronizeExpansion(expansionBranches);
+  }, [active, expansionBranches, synchronizeExpansion]);
   const value = useMemo(
     () => ({
       ...list,
