@@ -1246,6 +1246,7 @@ export const fr: TranslationResources = {
         all: "Tous les projets",
       },
     },
+    expansion: en.sidebar.expansion,
     filterEmpty: {
       title: "Aucun espace de travail ne correspond",
       description:
