@@ -1176,6 +1176,7 @@ export const ar: TranslationResources = {
         all: "كل المشاريع",
       },
     },
+    expansion: en.sidebar.expansion,
     filterEmpty: {
       title: "لا توجد مساحات عمل مطابقة",
       description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
