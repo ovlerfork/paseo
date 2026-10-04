@@ -1141,6 +1141,7 @@ export const ja: TranslationResources = {
         all: "すべてのプロジェクト",
       },
     },
+    expansion: en.sidebar.expansion,
     filterEmpty: {
       title: "一致するワークスペースがありません",
       description:
