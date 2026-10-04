@@ -11,6 +11,7 @@ import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { seedRuntimeWorkspaces } from "@/test/seed-session";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import { DEFAULT_SIDEBAR_EXPANSION_SETTINGS } from "@/stores/sidebar-collapsed-sections-store/state";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import type { HostProfile } from "@/types/host-connection";
@@ -82,7 +83,13 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
       sidebarShortcutWorkspaceTargets: [],
     });
     useSidebarCollapsedSectionsStore.setState({
+      settings: { ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, idle: "expanded" },
+      branches: [],
+      branchStates: new Map(),
       collapsedProjectKeys: new Set(),
+      collapsedProjectGroupNames: new Set(),
+      collapsedWorkspaceGroupKeys: new Set(),
+      collapsedPinned: false,
     });
     useSidebarOrderStore.setState({
       projectOrder: [],
@@ -113,6 +120,8 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
         root?.unmount();
       });
     }
+    useSidebarCollapsedSectionsStore.getState().synchronize([]);
+    useSidebarCollapsedSectionsStore.getState().resetSettings();
     root = null;
     container?.remove();
     container = null;
