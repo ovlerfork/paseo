@@ -1212,6 +1212,7 @@ export const ptBR: TranslationResources = {
         all: "Todos os projetos",
       },
     },
+    expansion: en.sidebar.expansion,
     filterEmpty: {
       title: "Nenhum espaço de trabalho corresponde",
       description: "Altere ou limpe os filtros da barra lateral para ver espaços de trabalho.",
