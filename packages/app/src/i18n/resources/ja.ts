@@ -1101,6 +1101,7 @@ export const ja: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "表示設定",
       heading: "表示",
