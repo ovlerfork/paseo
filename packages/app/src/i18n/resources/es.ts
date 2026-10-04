@@ -1124,6 +1124,7 @@ export const es: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "Preferencias de visualización",
       heading: "Visualización",

@@ -1114,6 +1114,7 @@ export const ptBR: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "Preferências de exibição",
       heading: "Exibição",

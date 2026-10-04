@@ -1088,6 +1088,7 @@ export const ar: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "تفضيلات العرض",
       heading: "العرض",

@@ -1080,6 +1080,18 @@ export const zhCN: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: {
+      title: "侧边栏展开设置",
+      trigger: "新建项目组；右键或长按配置侧边栏展开设置",
+      idle: "默认行为",
+      collapsed: "收起空闲分区",
+      expanded: "展开空闲分区",
+      automatic: "自动展开条件",
+      running: "任务正在运行",
+      needsInput: "任务等待输入",
+      attention: "任务需要关注",
+      reset: "恢复默认设置",
+    },
     display: {
       trigger: "显示偏好",
       heading: "显示",
