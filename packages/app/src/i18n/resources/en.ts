@@ -1194,6 +1194,18 @@ export const en = {
         all: "All projects",
       },
     },
+    expansion: {
+      title: "Sidebar expansion",
+      trigger: "New project group; right-click or long press for sidebar expansion settings",
+      idle: "Default behavior",
+      collapsed: "Collapse idle sections",
+      expanded: "Expand idle sections",
+      automatic: "Automatically expand when",
+      running: "Tasks are running",
+      needsInput: "Tasks need input",
+      attention: "Tasks need attention",
+      reset: "Restore defaults",
+    },
     filterEmpty: {
       title: "No workspaces match",
       description: "Change or clear the sidebar filters to see workspaces.",
