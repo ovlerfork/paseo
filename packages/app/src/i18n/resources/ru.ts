@@ -1230,6 +1230,7 @@ export const ru: TranslationResources = {
         all: "Все проекты",
       },
     },
+    expansion: en.sidebar.expansion,
     filterEmpty: {
       title: "Нет подходящих рабочих пространств",
       description:
