@@ -29,7 +29,10 @@ import {
   SIDEBAR_RESIZE_ACTIVATION_OFFSET,
   SIDEBAR_RESIZE_FAIL_OFFSET,
 } from "@/components/sidebar-resize-handle-layout";
+import { isNative } from "@/constants/platform";
 import { HostPicker } from "@/components/hosts/host-picker";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { SidebarExpansionMenuContent } from "@/components/sidebar/sidebar-expansion-menu";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
@@ -813,38 +816,58 @@ function DesktopSidebar({
 }
 
 function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
+  const { t } = useTranslation();
   return (
-    <SidebarSectionHeader title="Workspaces">
-      {onCreateProjectGroup ? (
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="New project group"
-              hitSlop={6}
-              onPress={onCreateProjectGroup}
-              style={styles.workspacesSectionActionButton}
-              testID="sidebar-create-project-group"
-            >
-              <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label="New project group" />
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
+    <ContextMenu>
+      <ContextMenuTrigger
+        contextOnly={!isNative}
+        accessibilityLabel={t("sidebar.expansion.title")}
+        testID="sidebar-workspaces-expansion-settings"
+      >
+        <SidebarSectionHeader title="Workspaces">
+          {onCreateProjectGroup ? (
+            <CreateProjectGroupButton onPress={onCreateProjectGroup} />
+          ) : null}
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <View>
+                <SidebarDisplayPreferencesMenu />
+              </View>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <IconTooltipContent label="Display preferences" />
+            </TooltipContent>
+          </Tooltip>
+        </SidebarSectionHeader>
+      </ContextMenuTrigger>
+      <SidebarExpansionMenuContent />
+    </ContextMenu>
+  );
+}
+
+function CreateProjectGroupButton({ onPress }: { onPress: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <ContextMenu>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <View>
-            <SidebarDisplayPreferencesMenu />
-          </View>
+          <ContextMenuTrigger
+            accessibilityRole="button"
+            accessibilityLabel={t("sidebar.expansion.trigger")}
+            hitSlop={6}
+            onPress={onPress}
+            style={styles.workspacesSectionActionButton}
+            testID="sidebar-create-project-group"
+          >
+            <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+          </ContextMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
-          <IconTooltipContent label="Display preferences" />
+          <IconTooltipContent label={t("sidebar.expansion.trigger")} />
         </TooltipContent>
       </Tooltip>
-    </SidebarSectionHeader>
+      <SidebarExpansionMenuContent />
+    </ContextMenu>
   );
 }
 
