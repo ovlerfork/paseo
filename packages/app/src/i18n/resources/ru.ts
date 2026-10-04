@@ -1105,6 +1105,7 @@ export const ru: TranslationResources = {
     },
   },
   sidebar: {
+    expansion: en.sidebar.expansion,
     display: {
       trigger: "Настройки отображения",
       heading: "Отображение",
