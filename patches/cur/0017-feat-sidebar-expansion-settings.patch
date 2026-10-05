@@ -1,0 +1,1103 @@
+From 626df13ae0ce5f591f377be21d053cb9ffcd5712 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 22:07:40 +0000
+Subject: [PATCH] Configure sidebar expansion around task activity
+
+Collapse idle sidebar sections and expand running task branches by default. Preserve manual choices until activity changes, and expose persistent expansion settings from the Workspaces header and new project group context menus.
+---
+ packages/app/src/components/left-sidebar.tsx  |  50 ++++--
+ .../src/components/sidebar-workspace-list.tsx |  15 +-
+ .../sidebar/sidebar-expansion-menu.test.tsx   |  51 ++++++
+ .../sidebar/sidebar-expansion-menu.tsx        |  63 +++++++
+ .../src/components/sidebar/sidebar-model.tsx  |  57 +++++-
+ .../sidebar/sidebar-projection.test.ts        |  12 ++
+ .../components/sidebar/sidebar-projection.ts  |   7 +-
+ ...space-shortcut-targets-subscriber.test.tsx |   9 +
+ packages/app/src/i18n/resources/ar.ts         |   1 +
+ packages/app/src/i18n/resources/en.ts         |  12 ++
+ packages/app/src/i18n/resources/es.ts         |   1 +
+ packages/app/src/i18n/resources/fr.ts         |   1 +
+ packages/app/src/i18n/resources/ja.ts         |   1 +
+ packages/app/src/i18n/resources/ko.ts         |   1 +
+ packages/app/src/i18n/resources/pt-BR.ts      |   1 +
+ packages/app/src/i18n/resources/ru.ts         |   1 +
+ packages/app/src/i18n/resources/zh-CN.ts      |  12 ++
+ .../sidebar-collapsed-sections-store/index.ts | 154 +++++++++++++---
+ .../state.test.ts                             | 151 ++++++++++------
+ .../sidebar-collapsed-sections-store/state.ts | 166 ++++++------------
+ 20 files changed, 538 insertions(+), 228 deletions(-)
+ create mode 100644 packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
+ create mode 100644 packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
+
+diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
+index 378c2a7..4fd3b28 100644
+--- a/packages/app/src/components/left-sidebar.tsx
++++ b/packages/app/src/components/left-sidebar.tsx
+@@ -22,6 +22,8 @@ import {
+ } from "@/components/sidebar-resize-handle-layout";
+ import { HostPicker } from "@/components/hosts/host-picker";
+ import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
++import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
++import { SidebarExpansionMenuContent } from "@/components/sidebar/sidebar-expansion-menu";
+ import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
+ import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
+ import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
+@@ -805,28 +807,40 @@ function DesktopSidebar({
+ }
+ 
+ function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
++  const { t } = useTranslation();
+   return (
+     <View style={styles.workspacesSectionHeader}>
+-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
++      <ContextMenu>
++        <ContextMenuTrigger
++          accessibilityLabel={t("sidebar.expansion.title")}
++          testID="sidebar-workspaces-expansion-settings"
++        >
++          <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
++        </ContextMenuTrigger>
++        <SidebarExpansionMenuContent />
++      </ContextMenu>
+       <View style={styles.workspacesSectionActions}>
+         {onCreateProjectGroup ? (
+-          <Tooltip delayDuration={300}>
+-            <TooltipTrigger asChild>
+-              <Pressable
+-                accessibilityRole="button"
+-                accessibilityLabel="New project group"
+-                hitSlop={6}
+-                onPress={onCreateProjectGroup}
+-                style={styles.workspacesSectionActionButton}
+-                testID="sidebar-create-project-group"
+-              >
+-                <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+-              </Pressable>
+-            </TooltipTrigger>
+-            <TooltipContent side="bottom" align="center" offset={8}>
+-              <IconTooltipContent label="New project group" />
+-            </TooltipContent>
+-          </Tooltip>
++          <ContextMenu>
++            <Tooltip delayDuration={300}>
++              <TooltipTrigger asChild>
++                <ContextMenuTrigger
++                  accessibilityRole="button"
++                  accessibilityLabel={t("sidebar.expansion.trigger")}
++                  hitSlop={6}
++                  onPress={onCreateProjectGroup}
++                  style={styles.workspacesSectionActionButton}
++                  testID="sidebar-create-project-group"
++                >
++                  <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
++                </ContextMenuTrigger>
++              </TooltipTrigger>
++              <TooltipContent side="bottom" align="center" offset={8}>
++                <IconTooltipContent label={t("sidebar.expansion.trigger")} />
++              </TooltipContent>
++            </Tooltip>
++            <SidebarExpansionMenuContent />
++          </ContextMenu>
+         ) : null}
+         <Tooltip delayDuration={300}>
+           <TooltipTrigger asChild>
+diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
+index a9c2f04..6da9831 100644
+--- a/packages/app/src/components/sidebar-workspace-list.tsx
++++ b/packages/app/src/components/sidebar-workspace-list.tsx
+@@ -2527,15 +2527,12 @@ function ProjectModeList({
+     }
+     return counts;
+   }, [projects, groupedProjects.groups, workspaceEntriesByKey]);
+-  const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
+-  const toggleGroup = useCallback((groupName: string) => {
+-    setCollapsedGroupNames((current) => {
+-      const next = new Set(current);
+-      if (next.has(groupName)) next.delete(groupName);
+-      else next.add(groupName);
+-      return next;
+-    });
+-  }, []);
++  const collapsedGroupNames = useSidebarCollapsedSectionsStore(
++    (state) => state.collapsedProjectGroupNames,
++  );
++  const toggleGroup = useSidebarCollapsedSectionsStore(
++    (state) => state.toggleProjectGroupCollapsed,
++  );
+   const openNewProjectGroup = useCallback(() => setEditingGroupName(null), []);
+   const closeProjectGroupsSheet = useCallback(() => setEditingGroupName(undefined), []);
+   const canCreateProjectGroup = groupHostIds.some(
+diff --git a/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx b/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
+new file mode 100644
+index 0000000..357c0f3
+--- /dev/null
++++ b/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
+@@ -0,0 +1,51 @@
++/** @vitest-environment jsdom */
++import React from "react";
++import { cleanup, fireEvent, render, screen } from "@testing-library/react";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import { Text } from "react-native";
++import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
++import { SidebarExpansionMenuContent } from "./sidebar-expansion-menu";
++import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
++
++vi.mock("@react-native-async-storage/async-storage", () => ({
++  default: {
++    getItem: vi.fn().mockResolvedValue(null),
++    setItem: vi.fn().mockResolvedValue(undefined),
++    removeItem: vi.fn(),
++  },
++}));
++vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
++
++beforeEach(() => {
++  vi.stubGlobal("React", React);
++  useSidebarCollapsedSectionsStore
++    .getState()
++    .synchronize([{ kind: "project", key: "project", activity: 0 }]);
++  useSidebarCollapsedSectionsStore.getState().resetSettings();
++});
++afterEach(cleanup);
++
++it("opens expansion settings with right click, applies choices without closing, and preserves left click", () => {
++  const onCreate = vi.fn();
++  render(
++    <ContextMenu>
++      <ContextMenuTrigger onPress={onCreate} testID="new-group">
++        <Text>New project group</Text>
++      </ContextMenuTrigger>
++      <SidebarExpansionMenuContent />
++    </ContextMenu>,
++  );
++  fireEvent.click(screen.getByTestId("new-group"));
++  expect(onCreate).toHaveBeenCalledTimes(1);
++  fireEvent.contextMenu(screen.getByTestId("new-group"), { clientX: 100, clientY: 100 });
++  fireEvent.click(screen.getByTestId("sidebar-expansion-idle-expanded"));
++  expect(useSidebarCollapsedSectionsStore.getState().collapsedProjectKeys.size).toBe(0);
++  fireEvent.click(screen.getByTestId("sidebar-expansion-running"));
++  expect(useSidebarCollapsedSectionsStore.getState().settings.running).toBe(false);
++  fireEvent.click(screen.getByTestId("sidebar-expansion-reset"));
++  expect(useSidebarCollapsedSectionsStore.getState().settings.running).toBe(true);
++  expect(useSidebarCollapsedSectionsStore.getState().collapsedProjectKeys.has("project")).toBe(
++    true,
++  );
++  expect(onCreate).toHaveBeenCalledTimes(1);
++});
+diff --git a/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx b/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
+new file mode 100644
+index 0000000..e544a6a
+--- /dev/null
++++ b/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
+@@ -0,0 +1,63 @@
++import { useCallback } from "react";
++import { useTranslation } from "react-i18next";
++import {
++  ContextMenuContent,
++  ContextMenuItem,
++  ContextMenuLabel,
++  ContextMenuSeparator,
++} from "@/components/ui/context-menu";
++import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
++
++export function SidebarExpansionMenuContent() {
++  const { t } = useTranslation();
++  const resetSettings = useSidebarCollapsedSectionsStore((state) => state.resetSettings);
++  return (
++    <ContextMenuContent width={280} testID="sidebar-expansion-menu">
++      <ContextMenuLabel>{t("sidebar.expansion.title")}</ContextMenuLabel>
++      <ContextMenuLabel>{t("sidebar.expansion.idle")}</ContextMenuLabel>
++      {(["collapsed", "expanded"] as const).map((idle) => (
++        <ExpansionOption key={idle} option={idle} />
++      ))}
++      <ContextMenuSeparator />
++      <ContextMenuLabel>{t("sidebar.expansion.automatic")}</ContextMenuLabel>
++      {(["running", "needsInput", "attention"] as const).map((trigger) => (
++        <ExpansionOption key={trigger} option={trigger} />
++      ))}
++      <ContextMenuSeparator />
++      <ContextMenuItem
++        onSelect={resetSettings}
++        closeOnSelect={false}
++        testID="sidebar-expansion-reset"
++      >
++        {t("sidebar.expansion.reset")}
++      </ContextMenuItem>
++    </ContextMenuContent>
++  );
++}
++
++function ExpansionOption({
++  option,
++}: {
++  option: "collapsed" | "expanded" | "running" | "needsInput" | "attention";
++}) {
++  const { t } = useTranslation();
++  const settings = useSidebarCollapsedSectionsStore((state) => state.settings);
++  const setSettings = useSidebarCollapsedSectionsStore((state) => state.setSettings);
++  const isIdle = option === "collapsed" || option === "expanded";
++  const selected = isIdle ? settings.idle === option : settings[option];
++  const onSelect = useCallback(() => {
++    if (option === "collapsed" || option === "expanded") setSettings({ ...settings, idle: option });
++    else setSettings({ ...settings, [option]: !settings[option] });
++  }, [option, settings, setSettings]);
++  return (
++    <ContextMenuItem
++      selected={selected}
++      showSelectedCheck
++      closeOnSelect={false}
++      onSelect={onSelect}
++      testID={`sidebar-expansion-${isIdle ? "idle-" : ""}${option}`}
++    >
++      {t(`sidebar.expansion.${option}`)}
++    </ContextMenuItem>
++  );
++}
+diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
+index 9399a3b..857f548 100644
+--- a/packages/app/src/components/sidebar/sidebar-model.tsx
++++ b/packages/app/src/components/sidebar/sidebar-model.tsx
+@@ -1,4 +1,11 @@
+-import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
++import React, {
++  createContext,
++  useContext,
++  useEffect,
++  useLayoutEffect,
++  useMemo,
++  type ReactNode,
++} from "react";
+ import {
+   useSidebarWorkspacesList,
+   type SidebarProjectEntry,
+@@ -16,6 +23,10 @@ import {
+ import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+ import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
+ import { buildSidebarProjection } from "./sidebar-projection";
++import {
++  sidebarActivity,
++  type SidebarExpansionBranch,
++} from "@/stores/sidebar-collapsed-sections-store/state";
+ import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
+ import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
+ import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
+@@ -66,6 +77,10 @@ export function SidebarModelProvider({
+   const collapsedWorkspaceGroupKeys = useSidebarCollapsedSectionsStore(
+     (state) => state.collapsedWorkspaceGroupKeys,
+   );
++  const collapsedProjectGroupNames = useSidebarCollapsedSectionsStore(
++    (state) => state.collapsedProjectGroupNames,
++  );
++  const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
+   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
+   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
+   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
+@@ -149,10 +164,12 @@ export function SidebarModelProvider({
+       groupMode,
+       pinnedCollapsed,
+       collapsedProjectKeys,
++      collapsedProjectGroupNames,
+       collapsedWorkspaceGroupKeys,
+     }),
+     [
+       collapsedProjectKeys,
++      collapsedProjectGroupNames,
+       collapsedWorkspaceGroupKeys,
+       groupMode,
+       list.projectNamesByViewKey,
+@@ -164,6 +181,44 @@ export function SidebarModelProvider({
+     ],
+   );
+   const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
++  const expansionBranches = useMemo(() => {
++    const activityFor = (keys: Iterable<string>) =>
++      sidebarActivity([...keys].map((key) => filteredWorkspaceEntriesByKey.get(key)?.statusBucket));
++    const branches: SidebarExpansionBranch[] = projection.pinnedGroups.unpinnedProjects.map(
++      (project) => ({
++        kind: "project",
++        key: project.viewKey,
++        activity: activityFor(project.workspaces.map((workspace) => workspace.workspaceKey)),
++      }),
++    );
++    const groups = new Map<string, string[]>();
++    for (const project of projection.pinnedGroups.unpinnedProjects) {
++      if (!project.groupName) continue;
++      const keys = groups.get(project.groupName) ?? [];
++      keys.push(...project.workspaces.map((workspace) => workspace.workspaceKey));
++      groups.set(project.groupName, keys);
++    }
++    for (const [key, keys] of groups)
++      branches.push({ kind: "projectGroup", key, activity: activityFor(keys) });
++    for (const group of projection.workspaceGroups)
++      branches.push({
++        kind: "workspaceGroup",
++        key: group.key,
++        activity: sidebarActivity(group.rows.map((workspace) => workspace.statusBucket)),
++      });
++    branches.push({
++      kind: "pinned",
++      key: "pinned",
++      activity: activityFor(
++        projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
++      ),
++    });
++    return branches;
++  }, [projection.pinnedGroups, projection.workspaceGroups, filteredWorkspaceEntriesByKey]);
++  useLayoutEffect(() => {
++    if (active === false) return;
++    synchronizeExpansion(expansionBranches);
++  }, [active, expansionBranches, synchronizeExpansion]);
+   const value = useMemo(
+     () => ({
+       ...list,
+diff --git a/packages/app/src/components/sidebar/sidebar-projection.test.ts b/packages/app/src/components/sidebar/sidebar-projection.test.ts
+index 55882a0..da61d4d 100644
+--- a/packages/app/src/components/sidebar/sidebar-projection.test.ts
++++ b/packages/app/src/components/sidebar/sidebar-projection.test.ts
+@@ -151,6 +151,18 @@ describe("buildSidebarProjection", () => {
+     ]);
+   });
+ 
++  it("numbers only pinned chats when their project group is collapsed", () => {
++    const input = projectionInput();
++    input.projects[0]!.groupName = "Development";
++    const projection = buildSidebarProjection({
++      ...input,
++      collapsedProjectGroupNames: new Set(["Development"]),
++    });
++    expect(projection.shortcutModel.shortcutTargets).toEqual([
++      { serverId: "srv", workspaceId: "pinned" },
++    ]);
++  });
++
+   it("keeps pinned chats above status groups and removes them from those groups", () => {
+     const projection = buildSidebarProjection(projectionInput({ groupMode: "status" }));
+ 
+diff --git a/packages/app/src/components/sidebar/sidebar-projection.ts b/packages/app/src/components/sidebar/sidebar-projection.ts
+index c67042b..4e81de8 100644
+--- a/packages/app/src/components/sidebar/sidebar-projection.ts
++++ b/packages/app/src/components/sidebar/sidebar-projection.ts
+@@ -44,6 +44,7 @@ export interface SidebarProjectionInput {
+   groupMode: SidebarGroupMode;
+   pinnedCollapsed: boolean;
+   collapsedProjectKeys: ReadonlySet<string>;
++  collapsedProjectGroupNames?: ReadonlySet<string>;
+   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
+ }
+ 
+@@ -70,7 +71,11 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
+     sections.push(
+       ...pinnedGroups.unpinnedProjects.map((project) => ({
+         workspaces: project.workspaces,
+-        collapsed: input.collapsedProjectKeys.has(project.viewKey),
++        collapsed:
++          input.collapsedProjectKeys.has(project.viewKey) ||
++          (project.groupName
++            ? input.collapsedProjectGroupNames?.has(project.groupName) === true
++            : false),
+       })),
+     );
+   } else {
+diff --git a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx b/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
+index 7124fd2..617f9c3 100644
+--- a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
++++ b/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
+@@ -11,6 +11,7 @@ import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+ import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
+ import { seedRuntimeWorkspaces } from "@/test/seed-session";
+ import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
++import { DEFAULT_SIDEBAR_EXPANSION_SETTINGS } from "@/stores/sidebar-collapsed-sections-store/state";
+ import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+ import { useSidebarViewStore } from "@/stores/sidebar-view-store";
+ import type { HostProfile } from "@/types/host-connection";
+@@ -82,7 +83,13 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
+       sidebarShortcutWorkspaceTargets: [],
+     });
+     useSidebarCollapsedSectionsStore.setState({
++      settings: { ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, idle: "expanded" },
++      branches: [],
++      branchStates: new Map(),
+       collapsedProjectKeys: new Set(),
++      collapsedProjectGroupNames: new Set(),
++      collapsedWorkspaceGroupKeys: new Set(),
++      collapsedPinned: false,
+     });
+     useSidebarOrderStore.setState({
+       projectOrder: [],
+@@ -113,6 +120,8 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
+         root?.unmount();
+       });
+     }
++    useSidebarCollapsedSectionsStore.getState().synchronize([]);
++    useSidebarCollapsedSectionsStore.getState().resetSettings();
+     root = null;
+     container?.remove();
+     container = null;
+diff --git a/packages/app/src/i18n/resources/ar.ts b/packages/app/src/i18n/resources/ar.ts
+index d29de2b..75e4fc5 100644
+--- a/packages/app/src/i18n/resources/ar.ts
++++ b/packages/app/src/i18n/resources/ar.ts
+@@ -1088,6 +1088,7 @@ export const ar: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "تفضيلات العرض",
+       heading: "العرض",
+diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
+index 1e2d4c3..8cf74f8 100644
+--- a/packages/app/src/i18n/resources/en.ts
++++ b/packages/app/src/i18n/resources/en.ts
+@@ -1096,6 +1096,18 @@ export const en = {
+     },
+   },
+   sidebar: {
++    expansion: {
++      title: "Sidebar expansion",
++      trigger: "New project group; right-click or long press for sidebar expansion settings",
++      idle: "Default behavior",
++      collapsed: "Collapse idle sections",
++      expanded: "Expand idle sections",
++      automatic: "Automatically expand when",
++      running: "Tasks are running",
++      needsInput: "Tasks need input",
++      attention: "Tasks need attention",
++      reset: "Restore defaults",
++    },
+     display: {
+       trigger: "Display preferences",
+       heading: "Display",
+diff --git a/packages/app/src/i18n/resources/es.ts b/packages/app/src/i18n/resources/es.ts
+index cc37432..e37f834 100644
+--- a/packages/app/src/i18n/resources/es.ts
++++ b/packages/app/src/i18n/resources/es.ts
+@@ -1124,6 +1124,7 @@ export const es: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "Preferencias de visualización",
+       heading: "Visualización",
+diff --git a/packages/app/src/i18n/resources/fr.ts b/packages/app/src/i18n/resources/fr.ts
+index aaf2608..87bfe74 100644
+--- a/packages/app/src/i18n/resources/fr.ts
++++ b/packages/app/src/i18n/resources/fr.ts
+@@ -1123,6 +1123,7 @@ export const fr: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "Préférences d'affichage",
+       heading: "Affichage",
+diff --git a/packages/app/src/i18n/resources/ja.ts b/packages/app/src/i18n/resources/ja.ts
+index 3491b50..d868ad9 100644
+--- a/packages/app/src/i18n/resources/ja.ts
++++ b/packages/app/src/i18n/resources/ja.ts
+@@ -1101,6 +1101,7 @@ export const ja: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "表示設定",
+       heading: "表示",
+diff --git a/packages/app/src/i18n/resources/ko.ts b/packages/app/src/i18n/resources/ko.ts
+index 7afe54b..818c7c0 100644
+--- a/packages/app/src/i18n/resources/ko.ts
++++ b/packages/app/src/i18n/resources/ko.ts
+@@ -1095,6 +1095,7 @@ export const ko: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "표시 설정",
+       heading: "표시",
+diff --git a/packages/app/src/i18n/resources/pt-BR.ts b/packages/app/src/i18n/resources/pt-BR.ts
+index a08088b..1c25ab5 100644
+--- a/packages/app/src/i18n/resources/pt-BR.ts
++++ b/packages/app/src/i18n/resources/pt-BR.ts
+@@ -1114,6 +1114,7 @@ export const ptBR: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "Preferências de exibição",
+       heading: "Exibição",
+diff --git a/packages/app/src/i18n/resources/ru.ts b/packages/app/src/i18n/resources/ru.ts
+index 4526784..7867cf6 100644
+--- a/packages/app/src/i18n/resources/ru.ts
++++ b/packages/app/src/i18n/resources/ru.ts
+@@ -1105,6 +1105,7 @@ export const ru: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: en.sidebar.expansion,
+     display: {
+       trigger: "Настройки отображения",
+       heading: "Отображение",
+diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
+index d13007d..356aa3c 100644
+--- a/packages/app/src/i18n/resources/zh-CN.ts
++++ b/packages/app/src/i18n/resources/zh-CN.ts
+@@ -1080,6 +1080,18 @@ export const zhCN: TranslationResources = {
+     },
+   },
+   sidebar: {
++    expansion: {
++      title: "侧边栏展开设置",
++      trigger: "新建项目组；右键或长按配置侧边栏展开设置",
++      idle: "默认行为",
++      collapsed: "收起空闲分区",
++      expanded: "展开空闲分区",
++      automatic: "自动展开条件",
++      running: "任务正在运行",
++      needsInput: "任务等待输入",
++      attention: "任务需要关注",
++      reset: "恢复默认设置",
++    },
+     display: {
+       trigger: "显示偏好",
+       heading: "显示",
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
+index bd24bed..f495eda 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
+@@ -1,46 +1,144 @@
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { create } from "zustand";
+ import { persist } from "zustand/middleware";
++import { z } from "zod";
+ import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
+ import {
+-  type CollapsedProjectsState,
+-  type PersistedCollapsedProjects,
+-  mergePersistedCollapsedProjects,
+-  PersistedCollapsedProjectsSchema,
+-  serializeCollapsedProjects,
+-  setProjectCollapsed,
+-  togglePinnedCollapsed,
+-  toggleProjectCollapsed,
+-  toggleWorkspaceGroupCollapsed,
++  DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
++  SidebarExpansionSettingsSchema,
++  reconcileSidebarExpansion,
++  sidebarBranchId,
++  type SidebarExpansionBranch,
++  type SidebarExpansionBranchState,
++  type SidebarExpansionSettings,
+ } from "./state";
+ 
+-interface SidebarCollapsedSectionsState extends CollapsedProjectsState {
++interface SidebarCollapsedSectionsState {
++  settings: SidebarExpansionSettings;
++  branches: SidebarExpansionBranch[];
++  branchStates: Map<string, SidebarExpansionBranchState>;
++  collapsedProjectKeys: Set<string>;
++  collapsedProjectGroupNames: Set<string>;
++  collapsedWorkspaceGroupKeys: Set<string>;
++  collapsedPinned: boolean;
++  synchronize: (branches: SidebarExpansionBranch[]) => void;
++  setSettings: (settings: SidebarExpansionSettings) => void;
++  resetSettings: () => void;
+   toggleProjectCollapsed: (projectKey: string) => void;
+   setProjectCollapsed: (projectKey: string, collapsed: boolean) => void;
++  toggleProjectGroupCollapsed: (groupName: string) => void;
+   toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
+   togglePinnedCollapsed: () => void;
+ }
+ 
++function collapseState(
++  branches: SidebarExpansionBranch[],
++  branchStates: Map<string, SidebarExpansionBranchState>,
++) {
++  const collapsedProjectKeys = new Set<string>();
++  const collapsedProjectGroupNames = new Set<string>();
++  const collapsedWorkspaceGroupKeys = new Set<string>();
++  let collapsedPinned = true;
++  for (const branch of branches) {
++    if (!branchStates.get(sidebarBranchId(branch))?.collapsed) {
++      if (branch.kind === "pinned") collapsedPinned = false;
++      continue;
++    }
++    switch (branch.kind) {
++      case "project":
++        collapsedProjectKeys.add(branch.key);
++        break;
++      case "projectGroup":
++        collapsedProjectGroupNames.add(branch.key);
++        break;
++      case "workspaceGroup":
++        collapsedWorkspaceGroupKeys.add(branch.key);
++        break;
++      case "pinned":
++        collapsedPinned = true;
++        break;
++    }
++  }
++  return {
++    branches,
++    branchStates,
++    collapsedProjectKeys,
++    collapsedProjectGroupNames,
++    collapsedWorkspaceGroupKeys,
++    collapsedPinned,
++  };
++}
++
+ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsState>()(
+-  persist<SidebarCollapsedSectionsState, [], [], PersistedCollapsedProjects>(
+-    (set) => ({
+-      collapsedProjectKeys: new Set(),
+-      collapsedWorkspaceGroupKeys: new Set(),
+-      collapsedPinned: false,
+-      toggleProjectCollapsed: (projectKey) =>
+-        set((state) => toggleProjectCollapsed(state, projectKey)),
+-      setProjectCollapsed: (projectKey, collapsed) =>
+-        set((state) => setProjectCollapsed(state, projectKey, collapsed)),
+-      toggleWorkspaceGroupCollapsed: (workspaceGroupKey) =>
+-        set((state) => toggleWorkspaceGroupCollapsed(state, workspaceGroupKey)),
+-      togglePinnedCollapsed: () => set((state) => togglePinnedCollapsed(state)),
+-    }),
++  persist(
++    (set) => {
++      const setManual = (kind: SidebarExpansionBranch["kind"], key: string, collapsed?: boolean) =>
++        set((state) => {
++          const id = sidebarBranchId({ kind, key });
++          const current = state.branchStates.get(id);
++          if (!current) return state;
++          const next = new Map(state.branchStates);
++          next.set(id, { ...current, collapsed: collapsed ?? !current.collapsed, manual: true });
++          return collapseState(state.branches, next);
++        });
++      const setSettings = (settings: SidebarExpansionSettings) =>
++        set((state) => ({
++          settings,
++          ...collapseState(
++            state.branches,
++            reconcileSidebarExpansion(new Map(), state.branches, settings),
++          ),
++        }));
++      return {
++        settings: DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
++        ...collapseState([], new Map()),
++        synchronize: (branches) =>
++          set((state) => {
++            const next = reconcileSidebarExpansion(state.branchStates, branches, state.settings);
++            if (
++              next.size === state.branchStates.size &&
++              [...next].every(([id, value]) => {
++                const current = state.branchStates.get(id);
++                return (
++                  current?.activity === value.activity &&
++                  current.collapsed === value.collapsed &&
++                  current.manual === value.manual
++                );
++              })
++            )
++              return state;
++            return collapseState(branches, next);
++          }),
++        setSettings,
++        resetSettings: () => setSettings(DEFAULT_SIDEBAR_EXPANSION_SETTINGS),
++        toggleProjectCollapsed: (key) => setManual("project", key),
++        setProjectCollapsed: (key, collapsed) => setManual("project", key, collapsed),
++        toggleProjectGroupCollapsed: (key) => setManual("projectGroup", key),
++        toggleWorkspaceGroupCollapsed: (key) => setManual("workspaceGroup", key),
++        togglePinnedCollapsed: () => setManual("pinned", "pinned"),
++      };
++    },
+     {
+-      name: "sidebar-collapsed-sections",
+-      storage: createValidatedPersistStorage(AsyncStorage, PersistedCollapsedProjectsSchema),
+-      partialize: (state) => serializeCollapsedProjects(state),
+-      merge: (persistedState, currentState) =>
+-        mergePersistedCollapsedProjects(persistedState, currentState),
++      name: "sidebar-expansion-settings",
++      storage: createValidatedPersistStorage(
++        AsyncStorage,
++        z.strictObject({ settings: SidebarExpansionSettingsSchema }),
++      ),
++      partialize: (state) => ({ settings: state.settings }),
++      merge: (persisted, current) => {
++        const result = z
++          .strictObject({ settings: SidebarExpansionSettingsSchema })
++          .safeParse(persisted);
++        if (!result.success) return current;
++        return {
++          ...current,
++          settings: result.data.settings,
++          ...collapseState(
++            current.branches,
++            reconcileSidebarExpansion(new Map(), current.branches, result.data.settings),
++          ),
++        };
++      },
+     },
+   ),
+ );
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
+index 6d88dff..6e65e94 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
+@@ -1,74 +1,111 @@
+-import { describe, expect, it } from "vitest";
++import AsyncStorage from "@react-native-async-storage/async-storage";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { useSidebarCollapsedSectionsStore } from ".";
+ import {
+-  type CollapsedProjectsState,
+-  mergePersistedCollapsedProjects,
+-  serializeCollapsedProjects,
+-  setProjectCollapsed,
+-  togglePinnedCollapsed,
+-  toggleProjectCollapsed,
+-  toggleWorkspaceGroupCollapsed,
+-} from "@/stores/sidebar-collapsed-sections-store/state";
++  DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
++  sidebarActivity,
++  type SidebarExpansionBranch,
++} from "./state";
+ 
+-function emptyState(): CollapsedProjectsState {
+-  return {
+-    collapsedProjectKeys: new Set(),
+-    collapsedWorkspaceGroupKeys: new Set(),
+-    collapsedPinned: false,
+-  };
+-}
++vi.mock("@react-native-async-storage/async-storage", () => ({
++  default: {
++    getItem: vi.fn().mockResolvedValue(null),
++    setItem: vi.fn().mockResolvedValue(undefined),
++    removeItem: vi.fn().mockResolvedValue(undefined),
++  },
++}));
+ 
+-describe("sidebar collapsed projects transitions", () => {
+-  it("tracks collapsed project keys as a Set", () => {
+-    let state = emptyState();
++const store = useSidebarCollapsedSectionsStore;
++const branches = (activity: number): SidebarExpansionBranch[] => [
++  { kind: "project", key: "project-a", activity },
++  { kind: "projectGroup", key: "group-a", activity },
++  { kind: "workspaceGroup", key: "running", activity },
++  { kind: "pinned", key: "pinned", activity },
++  { kind: "project", key: "project-idle", activity: 0 },
++];
+ 
+-    state = setProjectCollapsed(state, "project-a", true);
+-    state = toggleProjectCollapsed(state, "project-b");
+-    state = toggleProjectCollapsed(state, "project-a");
+-    state = toggleWorkspaceGroupCollapsed(state, "running");
++beforeEach(() => {
++  store.getState().synchronize([]);
++  store.getState().resetSettings();
++});
+ 
+-    expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-b"]);
+-    expect(Array.from(state.collapsedWorkspaceGroupKeys)).toEqual(["running"]);
+-  });
++describe("sidebar expansion", () => {
++  it("collapses idle branches, opens running ancestors, and collapses them when tasks finish", () => {
++    store.getState().synchronize(branches(0));
++    expect(store.getState().collapsedProjectKeys).toEqual(new Set(["project-a", "project-idle"]));
++    expect(store.getState().collapsedProjectGroupNames.has("group-a")).toBe(true);
++    expect(store.getState().collapsedWorkspaceGroupKeys.has("running")).toBe(true);
++    expect(store.getState().collapsedPinned).toBe(true);
+ 
+-  it("serializes collapsed project keys for preference storage", () => {
+-    const state: CollapsedProjectsState = {
+-      collapsedProjectKeys: new Set(["project-a", "project-b"]),
+-      collapsedWorkspaceGroupKeys: new Set(["running"]),
+-      collapsedPinned: true,
+-    };
++    store.getState().synchronize(branches(sidebarActivity(["running", "needs_input"])));
++    expect(store.getState().collapsedProjectKeys).toEqual(new Set(["project-idle"]));
++    expect(store.getState().collapsedProjectGroupNames.size).toBe(0);
++    expect(store.getState().collapsedWorkspaceGroupKeys.size).toBe(0);
++    expect(store.getState().collapsedPinned).toBe(false);
+ 
+-    expect(serializeCollapsedProjects(state)).toEqual({
+-      collapsedProjectKeys: ["project-a", "project-b"],
+-      collapsedWorkspaceGroupKeys: ["running"],
+-      collapsedPinned: true,
+-    });
++    store.getState().synchronize(branches(0));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    expect(store.getState().collapsedPinned).toBe(true);
+   });
+ 
+-  it("toggles and restores the pinned section collapse flag", () => {
+-    const toggled = togglePinnedCollapsed(emptyState());
+-    expect(toggled.collapsedPinned).toBe(true);
++  it("respects manual toggles while activity is unchanged and resets them on transitions", () => {
++    store.getState().synchronize(branches(1));
++    store.getState().toggleProjectCollapsed("project-a");
++    store.getState().toggleProjectGroupCollapsed("group-a");
++    store.getState().toggleWorkspaceGroupCollapsed("running");
++    store.getState().togglePinnedCollapsed();
++    store.getState().synchronize(branches(1));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    expect(store.getState().collapsedProjectGroupNames.has("group-a")).toBe(true);
++    expect(store.getState().collapsedWorkspaceGroupKeys.has("running")).toBe(true);
++    expect(store.getState().collapsedPinned).toBe(true);
+ 
+-    const restored = mergePersistedCollapsedProjects({ collapsedPinned: true }, emptyState());
+-    expect(restored.collapsedPinned).toBe(true);
++    store.getState().synchronize(branches(0));
++    store.getState().setProjectCollapsed("project-a", false);
++    store.getState().synchronize(branches(0));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
++    store.getState().synchronize(branches(1));
++    expect(store.getState().collapsedProjectGroupNames.has("group-a")).toBe(false);
++    expect(store.getState().collapsedPinned).toBe(false);
++    store.getState().synchronize(branches(0));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
+   });
+ 
+-  it("rejects the complete value when a persisted project key is invalid", () => {
+-    const restored = mergePersistedCollapsedProjects(
+-      { collapsedProjectKeys: ["project-a", "project-b", 42] },
+-      emptyState(),
+-    );
+-
+-    expect(Array.from(restored.collapsedProjectKeys)).toEqual([]);
+-    expect(Array.from(restored.collapsedWorkspaceGroupKeys)).toEqual([]);
++  it("applies configured triggers and idle behavior immediately and restores defaults", () => {
++    store.getState().synchronize(branches(sidebarActivity(["needs_input", "attention"])));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, needsInput: true });
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
++    store.getState().toggleProjectCollapsed("project-a");
++    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, attention: true });
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
++    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, running: false });
++    store.getState().synchronize(branches(1));
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, idle: "expanded" });
++    expect(store.getState().collapsedProjectKeys.size).toBe(0);
++    store.getState().resetSettings();
++    expect(store.getState().settings).toEqual(DEFAULT_SIDEBAR_EXPANSION_SETTINGS);
++    expect(store.getState().collapsedProjectKeys).toEqual(new Set(["project-idle"]));
+   });
+ 
+-  it("keeps the existing state object when persisted preferences do not change collapsed keys", () => {
+-    const currentState = emptyState();
+-
+-    expect(mergePersistedCollapsedProjects(undefined, currentState)).toBe(currentState);
+-    expect(mergePersistedCollapsedProjects({}, currentState)).toBe(currentState);
+-    expect(mergePersistedCollapsedProjects({ collapsedProjectKeys: [] }, currentState)).toBe(
+-      currentState,
++  it("restores validated local settings and recalculates current sections", async () => {
++    store.getState().synchronize(branches(0));
++    const settings = {
++      ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
++      idle: "expanded" as const,
++      running: false,
++    };
++    vi.mocked(AsyncStorage.getItem).mockResolvedValueOnce(
++      JSON.stringify({ state: { settings }, version: 0 }),
++    );
++    await store.persist.rehydrate();
++    expect(store.getState().settings).toEqual(settings);
++    expect(store.getState().collapsedProjectKeys.size).toBe(0);
++    vi.mocked(AsyncStorage.getItem).mockResolvedValueOnce(
++      JSON.stringify({ state: { settings: { ...settings, idle: "invalid" } }, version: 0 }),
+     );
++    await store.persist.rehydrate();
++    expect(store.getState().settings).toEqual(settings);
+   });
+ });
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
+index cf92e60..1978cfc 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
+@@ -1,128 +1,66 @@
+ import { z } from "zod";
+ 
+-export interface CollapsedProjectsState {
+-  collapsedProjectKeys: Set<string>;
+-  collapsedWorkspaceGroupKeys: Set<string>;
+-  collapsedPinned: boolean;
+-}
+-
+-export interface PersistedCollapsedProjects {
+-  collapsedProjectKeys?: string[];
+-  collapsedWorkspaceGroupKeys?: string[];
+-  collapsedStatusGroupKeys?: string[];
+-  collapsedPinned?: boolean;
+-}
+-
+-export const PersistedCollapsedProjectsSchema: z.ZodType<PersistedCollapsedProjects> =
+-  z.strictObject({
+-    collapsedProjectKeys: z.array(z.string()).optional(),
+-    collapsedWorkspaceGroupKeys: z.array(z.string()).optional(),
+-    // COMPAT(sidebarWorkspaceGroupCollapse): added in v0.4.0, remove after 2027-02-14.
+-    collapsedStatusGroupKeys: z.array(z.string()).optional(),
+-    collapsedPinned: z.boolean().optional(),
+-  });
++export const SidebarExpansionSettingsSchema = z.strictObject({
++  idle: z.enum(["collapsed", "expanded"]),
++  running: z.boolean(),
++  needsInput: z.boolean(),
++  attention: z.boolean(),
++});
++export type SidebarExpansionSettings = z.infer<typeof SidebarExpansionSettingsSchema>;
++export const DEFAULT_SIDEBAR_EXPANSION_SETTINGS: SidebarExpansionSettings = {
++  idle: "collapsed",
++  running: true,
++  needsInput: false,
++  attention: false,
++};
+ 
+-export function togglePinnedCollapsed(state: CollapsedProjectsState): CollapsedProjectsState {
+-  return { ...state, collapsedPinned: !state.collapsedPinned };
++export interface SidebarExpansionBranch {
++  kind: "project" | "projectGroup" | "workspaceGroup" | "pinned";
++  key: string;
++  activity: number;
+ }
+ 
+-export function toggleProjectCollapsed(
+-  state: CollapsedProjectsState,
+-  projectKey: string,
+-): CollapsedProjectsState {
+-  const next = new Set(state.collapsedProjectKeys);
+-  if (next.has(projectKey)) {
+-    next.delete(projectKey);
+-  } else {
+-    next.add(projectKey);
++export function sidebarActivity(buckets: Iterable<string | undefined>): number {
++  let activity = 0;
++  for (const bucket of buckets) {
++    if (bucket === "running") activity |= 1;
++    if (bucket === "needs_input") activity |= 2;
++    if (bucket === "attention") activity |= 4;
+   }
+-  return { ...state, collapsedProjectKeys: next };
++  return activity;
+ }
+ 
+-export function toggleWorkspaceGroupCollapsed(
+-  state: CollapsedProjectsState,
+-  workspaceGroupKey: string,
+-): CollapsedProjectsState {
+-  const next = new Set(state.collapsedWorkspaceGroupKeys);
+-  if (next.has(workspaceGroupKey)) {
+-    next.delete(workspaceGroupKey);
+-  } else {
+-    next.add(workspaceGroupKey);
+-  }
+-  return { ...state, collapsedWorkspaceGroupKeys: next };
+-}
+-
+-export function setProjectCollapsed(
+-  state: CollapsedProjectsState,
+-  projectKey: string,
+-  collapsed: boolean,
+-): CollapsedProjectsState {
+-  const next = new Set(state.collapsedProjectKeys);
+-  if (collapsed) {
+-    next.add(projectKey);
+-  } else {
+-    next.delete(projectKey);
+-  }
+-  return { ...state, collapsedProjectKeys: next };
++export function sidebarBranchId(branch: Pick<SidebarExpansionBranch, "kind" | "key">): string {
++  return JSON.stringify([branch.kind, branch.key]);
+ }
+ 
+-export function serializeCollapsedProjects(state: CollapsedProjectsState): {
+-  collapsedProjectKeys: string[];
+-  collapsedWorkspaceGroupKeys: string[];
+-  collapsedPinned: boolean;
+-} {
+-  return {
+-    collapsedProjectKeys: Array.from(state.collapsedProjectKeys),
+-    collapsedWorkspaceGroupKeys: Array.from(state.collapsedWorkspaceGroupKeys),
+-    collapsedPinned: state.collapsedPinned,
+-  };
++export interface SidebarExpansionBranchState {
++  activity: number;
++  collapsed: boolean;
++  manual: boolean;
+ }
+ 
+-export function mergePersistedCollapsedProjects<S extends CollapsedProjectsState>(
+-  persistedValue: unknown,
+-  current: S,
+-): S {
+-  const result = PersistedCollapsedProjectsSchema.safeParse(persistedValue);
+-  if (!result.success) {
+-    return current;
+-  }
+-  const persisted = result.data;
+-  const restoredProjects = deserializeCollapsedKeys(
+-    persisted.collapsedProjectKeys ?? Array.from(current.collapsedProjectKeys),
+-  );
+-  const restoredWorkspaceGroups = deserializeCollapsedKeys(
+-    persisted.collapsedWorkspaceGroupKeys ??
+-      persisted.collapsedStatusGroupKeys ??
+-      Array.from(current.collapsedWorkspaceGroupKeys),
+-  );
+-  const restoredPinned = persisted.collapsedPinned ?? current.collapsedPinned;
+-  if (
+-    areSetsEqual(current.collapsedProjectKeys, restoredProjects) &&
+-    areSetsEqual(current.collapsedWorkspaceGroupKeys, restoredWorkspaceGroups) &&
+-    current.collapsedPinned === restoredPinned
+-  ) {
+-    return current;
+-  }
+-  return {
+-    ...current,
+-    collapsedProjectKeys: restoredProjects,
+-    collapsedWorkspaceGroupKeys: restoredWorkspaceGroups,
+-    collapsedPinned: restoredPinned,
+-  };
+-}
+-
+-function deserializeCollapsedKeys(value: string[]): Set<string> {
+-  return new Set(value);
+-}
+-
+-function areSetsEqual(left: Set<string>, right: Set<string>): boolean {
+-  if (left.size !== right.size) {
+-    return false;
+-  }
+-  for (const key of left) {
+-    if (!right.has(key)) {
+-      return false;
+-    }
++export function reconcileSidebarExpansion(
++  previous: ReadonlyMap<string, SidebarExpansionBranchState>,
++  branches: readonly SidebarExpansionBranch[],
++  settings: SidebarExpansionSettings,
++): Map<string, SidebarExpansionBranchState> {
++  const next = new Map<string, SidebarExpansionBranchState>();
++  for (const branch of branches) {
++    const id = sidebarBranchId(branch);
++    const current = previous.get(id);
++    const enabledActivity =
++      (settings.running ? 1 : 0) | (settings.needsInput ? 2 : 0) | (settings.attention ? 4 : 0);
++    next.set(
++      id,
++      current?.activity === branch.activity && current.manual
++        ? current
++        : {
++            activity: branch.activity,
++            collapsed: settings.idle === "collapsed" && !(branch.activity & enabledActivity),
++            manual: false,
++          },
++    );
+   }
+-  return true;
++  return next;
+ }
+-- 
+2.43.0
+
