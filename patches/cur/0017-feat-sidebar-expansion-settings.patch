@@ -30,21 +30,15 @@ Collapse idle sidebar sections and expand running task branches by default. Pres
  create mode 100644 packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index 378c2a7..4fd3b28 100644
+index aec05a9b..7ad6e2e0 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -22,6 +22,8 @@ import {
- } from "@/components/sidebar-resize-handle-layout";
+@@ -24,2 +24,4 @@ import {
  import { HostPicker } from "@/components/hosts/host-picker";
- import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 +import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 +import { SidebarExpansionMenuContent } from "@/components/sidebar/sidebar-expansion-menu";
- import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
- import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
- import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
-@@ -805,28 +807,40 @@ function DesktopSidebar({
- }
- 
+ import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
+@@ -812,24 +814,36 @@ function DesktopSidebar({
  function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
 +  const { t } = useTranslation();
    return (
@@ -99,8 +93,6 @@ index 378c2a7..4fd3b28 100644
 +            <SidebarExpansionMenuContent />
 +          </ContextMenu>
          ) : null}
-         <Tooltip delayDuration={300}>
-           <TooltipTrigger asChild>
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
 index a9c2f04..6da9831 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
@@ -254,10 +246,10 @@ index 0000000..e544a6a
 +  );
 +}
 diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
-index 9399a3b..857f548 100644
+index 9399a3bd..857f5486 100644
 --- a/packages/app/src/components/sidebar/sidebar-model.tsx
 +++ b/packages/app/src/components/sidebar/sidebar-model.tsx
-@@ -1,4 +1,11 @@
+@@ -2,2 +2,9 @@
 -import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 +import React, {
 +  createContext,
@@ -268,46 +260,29 @@ index 9399a3b..857f548 100644
 +  type ReactNode,
 +} from "react";
  import {
-   useSidebarWorkspacesList,
-   type SidebarProjectEntry,
-@@ -16,6 +23,10 @@ import {
- import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
- import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
+@@ -18,2 +25,6 @@ import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
  import { buildSidebarProjection } from "./sidebar-projection";
 +import {
 +  sidebarActivity,
 +  type SidebarExpansionBranch,
 +} from "@/stores/sidebar-collapsed-sections-store/state";
  import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
- import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
- import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
-@@ -66,6 +77,10 @@ export function SidebarModelProvider({
-   const collapsedWorkspaceGroupKeys = useSidebarCollapsedSectionsStore(
-     (state) => state.collapsedWorkspaceGroupKeys,
+@@ -68,2 +79,6 @@ export function SidebarModelProvider({
    );
 +  const collapsedProjectGroupNames = useSidebarCollapsedSectionsStore(
 +    (state) => state.collapsedProjectGroupNames,
 +  );
 +  const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
    const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
-   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
-   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
-@@ -149,10 +164,12 @@ export function SidebarModelProvider({
-       groupMode,
-       pinnedCollapsed,
+@@ -151,2 +166,3 @@ export function SidebarModelProvider({
        collapsedProjectKeys,
 +      collapsedProjectGroupNames,
        collapsedWorkspaceGroupKeys,
-     }),
-     [
+@@ -155,2 +171,3 @@ export function SidebarModelProvider({
        collapsedProjectKeys,
 +      collapsedProjectGroupNames,
        collapsedWorkspaceGroupKeys,
-       groupMode,
-       list.projectNamesByViewKey,
-@@ -164,6 +181,44 @@ export function SidebarModelProvider({
-     ],
-   );
+@@ -166,2 +183,40 @@ export function SidebarModelProvider({
    const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
 +  const expansionBranches = useMemo(() => {
 +    const activityFor = (keys: Iterable<string>) =>
@@ -348,8 +323,6 @@ index 9399a3b..857f548 100644
 +    synchronizeExpansion(expansionBranches);
 +  }, [active, expansionBranches, synchronizeExpansion]);
    const value = useMemo(
-     () => ({
-       ...list,
 diff --git a/packages/app/src/components/sidebar/sidebar-projection.test.ts b/packages/app/src/components/sidebar/sidebar-projection.test.ts
 index 55882a0..da61d4d 100644
 --- a/packages/app/src/components/sidebar/sidebar-projection.test.ts
@@ -374,20 +347,14 @@ index 55882a0..da61d4d 100644
      const projection = buildSidebarProjection(projectionInput({ groupMode: "status" }));
  
 diff --git a/packages/app/src/components/sidebar/sidebar-projection.ts b/packages/app/src/components/sidebar/sidebar-projection.ts
-index c67042b..4e81de8 100644
+index c67042b4..4e81de85 100644
 --- a/packages/app/src/components/sidebar/sidebar-projection.ts
 +++ b/packages/app/src/components/sidebar/sidebar-projection.ts
-@@ -44,6 +44,7 @@ export interface SidebarProjectionInput {
-   groupMode: SidebarGroupMode;
-   pinnedCollapsed: boolean;
+@@ -46,2 +46,3 @@ export interface SidebarProjectionInput {
    collapsedProjectKeys: ReadonlySet<string>;
 +  collapsedProjectGroupNames?: ReadonlySet<string>;
    collapsedWorkspaceGroupKeys: ReadonlySet<string>;
- }
- 
-@@ -70,7 +71,11 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
-     sections.push(
-       ...pinnedGroups.unpinnedProjects.map((project) => ({
+@@ -72,3 +73,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
          workspaces: project.workspaces,
 -        collapsed: input.collapsedProjectKeys.has(project.viewKey),
 +        collapsed:
@@ -396,8 +363,6 @@ index c67042b..4e81de8 100644
 +            ? input.collapsedProjectGroupNames?.has(project.groupName) === true
 +            : false),
        })),
-     );
-   } else {
 diff --git a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx b/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
 index 7124fd2..617f9c3 100644
 --- a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
@@ -434,25 +399,19 @@ index 7124fd2..617f9c3 100644
      container?.remove();
      container = null;
 diff --git a/packages/app/src/i18n/resources/ar.ts b/packages/app/src/i18n/resources/ar.ts
-index d29de2b..75e4fc5 100644
+index 96ea4f35..0d155e63 100644
 --- a/packages/app/src/i18n/resources/ar.ts
 +++ b/packages/app/src/i18n/resources/ar.ts
-@@ -1088,6 +1088,7 @@ export const ar: TranslationResources = {
+@@ -1127,2 +1127,3 @@ export const ar: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "تفضيلات العرض",
-       heading: "العرض",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index 1e2d4c3..8cf74f8 100644
+index e2008f41..6b6f9db3 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -1096,6 +1096,18 @@ export const en = {
+@@ -1135,2 +1135,14 @@ export const en = {
      },
-   },
-   sidebar: {
 +    expansion: {
 +      title: "Sidebar expansion",
 +      trigger: "New project group; right-click or long press for sidebar expansion settings",
@@ -465,89 +424,61 @@ index 1e2d4c3..8cf74f8 100644
 +      attention: "Tasks need attention",
 +      reset: "Restore defaults",
 +    },
-     display: {
-       trigger: "Display preferences",
-       heading: "Display",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/es.ts b/packages/app/src/i18n/resources/es.ts
-index cc37432..e37f834 100644
+index 0913572a..03b53ff4 100644
 --- a/packages/app/src/i18n/resources/es.ts
 +++ b/packages/app/src/i18n/resources/es.ts
-@@ -1124,6 +1124,7 @@ export const es: TranslationResources = {
+@@ -1163,2 +1163,3 @@ export const es: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "Preferencias de visualización",
-       heading: "Visualización",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/fr.ts b/packages/app/src/i18n/resources/fr.ts
-index aaf2608..87bfe74 100644
+index 31a19e89..1361e036 100644
 --- a/packages/app/src/i18n/resources/fr.ts
 +++ b/packages/app/src/i18n/resources/fr.ts
-@@ -1123,6 +1123,7 @@ export const fr: TranslationResources = {
+@@ -1162,2 +1162,3 @@ export const fr: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "Préférences d'affichage",
-       heading: "Affichage",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/ja.ts b/packages/app/src/i18n/resources/ja.ts
-index 3491b50..d868ad9 100644
+index a922c24b..96d6dd7c 100644
 --- a/packages/app/src/i18n/resources/ja.ts
 +++ b/packages/app/src/i18n/resources/ja.ts
-@@ -1101,6 +1101,7 @@ export const ja: TranslationResources = {
+@@ -1140,2 +1140,3 @@ export const ja: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "表示設定",
-       heading: "表示",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/ko.ts b/packages/app/src/i18n/resources/ko.ts
-index 7afe54b..818c7c0 100644
+index 9d01f247..50549780 100644
 --- a/packages/app/src/i18n/resources/ko.ts
 +++ b/packages/app/src/i18n/resources/ko.ts
-@@ -1095,6 +1095,7 @@ export const ko: TranslationResources = {
+@@ -1134,2 +1134,3 @@ export const ko: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "표시 설정",
-       heading: "표시",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/pt-BR.ts b/packages/app/src/i18n/resources/pt-BR.ts
-index a08088b..1c25ab5 100644
+index bc562f7c..901569a3 100644
 --- a/packages/app/src/i18n/resources/pt-BR.ts
 +++ b/packages/app/src/i18n/resources/pt-BR.ts
-@@ -1114,6 +1114,7 @@ export const ptBR: TranslationResources = {
+@@ -1153,2 +1153,3 @@ export const ptBR: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "Preferências de exibição",
-       heading: "Exibição",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/ru.ts b/packages/app/src/i18n/resources/ru.ts
-index 4526784..7867cf6 100644
+index f34ad5a7..1fe4ceb7 100644
 --- a/packages/app/src/i18n/resources/ru.ts
 +++ b/packages/app/src/i18n/resources/ru.ts
-@@ -1105,6 +1105,7 @@ export const ru: TranslationResources = {
+@@ -1144,2 +1144,3 @@ export const ru: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: en.sidebar.expansion,
-     display: {
-       trigger: "Настройки отображения",
-       heading: "Отображение",
+     filterEmpty: {
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index d13007d..356aa3c 100644
+index b1c56f84..77c68ada 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -1080,6 +1080,18 @@ export const zhCN: TranslationResources = {
+@@ -1119,2 +1119,14 @@ export const zhCN: TranslationResources = {
      },
-   },
-   sidebar: {
 +    expansion: {
 +      title: "侧边栏展开设置",
 +      trigger: "新建项目组；右键或长按配置侧边栏展开设置",
@@ -560,9 +491,7 @@ index d13007d..356aa3c 100644
 +      attention: "任务需要关注",
 +      reset: "恢复默认设置",
 +    },
-     display: {
-       trigger: "显示偏好",
-       heading: "显示",
+     filterEmpty: {
 diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
 index bd24bed..f495eda 100644
 --- a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
