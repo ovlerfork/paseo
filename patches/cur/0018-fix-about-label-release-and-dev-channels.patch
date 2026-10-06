@@ -1,0 +1,30 @@
+From c01203fcc3729a76e5a0f8621acf0ea831e1aa47 Mon Sep 17 00:00:00 2001
+From: Ovler <ovler@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 09:03:39 +0000
+Subject: [PATCH] Label About update channels Release and Dev
+
+---
+ packages/app/src/screens/settings-screen.tsx | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/packages/app/src/screens/settings-screen.tsx b/packages/app/src/screens/settings-screen.tsx
+index 913be879..c9e36e5b 100644
+--- a/packages/app/src/screens/settings-screen.tsx
++++ b/packages/app/src/screens/settings-screen.tsx
+@@ -637,10 +637,10 @@ function DesktopAppUpdateRow() {
+   );
+   const releaseChannelOptions = useMemo(
+     () => [
+-      { value: "stable" as const, label: t("settings.about.releaseChannel.stable") },
+-      { value: "beta" as const, label: t("settings.about.releaseChannel.beta") },
++      { value: "stable" as const, label: "Release" },
++      { value: "beta" as const, label: "Dev" },
+     ],
+-    [t],
++    [],
+   );
+ 
+   const handleInstallUpdate = useCallback(() => {
+-- 
+2.43.0
+

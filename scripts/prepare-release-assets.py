@@ -38,7 +38,7 @@ def main() -> None:
     parser.add_argument("--artifacts", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--channel", choices=("latest", "beta"), required=True)
+    parser.add_argument("--channel", choices=("latest", "beta", "dev"), required=True)
     args = parser.parse_args()
 
     output = args.output

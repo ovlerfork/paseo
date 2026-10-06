@@ -3,6 +3,8 @@ name: Fork Release Build
 on:
   schedule:
     - cron: "*/5 * * * *"
+    - cron: "17 * * * *"
+    - cron: "47 * * * *"
   workflow_run:
     workflows: ["Patch Check"]
     types: [completed]
@@ -29,6 +31,11 @@ on:
         description: "Exact patchset commit to use for development publishing"
         required: false
         default: ""
+      clients_only:
+        description: "Build client releases without publishing Docker images"
+        required: false
+        default: false
+        type: boolean
       publish:
         description: "Publish images and a GitHub Release after building"
         required: false
@@ -40,7 +47,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && 'scheduled-mods' || github.event.workflow_run.head_sha }}
+  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && github.event.schedule || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 env:
@@ -55,7 +62,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'patchset')
     runs-on: ubuntu-latest
     concurrency:
-      group: patched-prepare-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && 'scheduled-mods' || github.event.workflow_run.head_sha }}
+      group: patched-prepare-${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || github.event_name == 'schedule' && github.event.schedule || github.event.workflow_run.head_sha }}
       cancel-in-progress: false
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -65,6 +72,8 @@ jobs:
       patched_sha: ${{ steps.meta.outputs.patched_sha }}
       patchset_sha: ${{ steps.patchset.outputs.sha }}
       publish_mode: ${{ steps.meta.outputs.publish_mode }}
+      clients_only: ${{ steps.upstream_ref.outputs.clients_only }}
+      publish_clients: ${{ steps.upstream_ref.outputs.publish_clients }}
       publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
       publish: ${{ steps.publish.outputs.value }}
       release_needed: ${{ steps.release_status.outputs.needed }}
@@ -99,15 +108,27 @@ jobs:
         id: upstream_ref
         env:
           EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_CLIENTS_ONLY: ${{ inputs.clients_only }}
           INPUT_PUBLISH_MODE: ${{ inputs.publish_mode }}
           INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+          clients_only=false
+          publish_clients=true
+          if [[ "${EVENT_NAME}" == "schedule" && "${SCHEDULE}" == "17 * * * *" ]]; then
+            clients_only=true
+            publish_mode=release
+          elif [[ "${EVENT_NAME}" == "schedule" && "${SCHEDULE}" == "47 * * * *" ]]; then
+            clients_only=true
+            publish_mode=prerelease
+          elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             publish_mode="${INPUT_PUBLISH_MODE}"
+            clients_only="${INPUT_CLIENTS_ONLY:-false}"
           elif [[ "${EVENT_NAME}" == "schedule" ]]; then
             publish_mode=prerelease
+            publish_clients=false
           else
             publish_mode=dev
           fi
@@ -116,6 +137,8 @@ jobs:
             upstream_ref="${INPUT_UPSTREAM_REF}"
           elif [[ "${publish_mode}" == "dev" ]]; then
             upstream_ref=main
+          elif [[ "${clients_only}" == "true" && "${publish_mode}" == "prerelease" ]]; then
+            upstream_ref="$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.prerelease and (.draft | not) and (.tag_name | test("-beta[.-]"; "i")))] | max_by(.published_at).tag_name')"
           elif [[ "${publish_mode}" == "prerelease" ]]; then
             upstream_ref="$(gh api --paginate 'repos/getpaseo/paseo/releases?per_page=100' | jq --slurp -r '[.[][] | select(.draft | not)] | max_by(.published_at).tag_name')"
           else
@@ -127,6 +150,8 @@ jobs:
           fi
           echo "ref=${upstream_ref}" >> "$GITHUB_OUTPUT"
           echo "publish_mode=${publish_mode}" >> "$GITHUB_OUTPUT"
+          echo "clients_only=${clients_only}" >> "$GITHUB_OUTPUT"
+          echo "publish_clients=${publish_clients}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${upstream_ref} (${publish_mode})"
 
       - name: Checkout upstream source
@@ -195,7 +220,7 @@ jobs:
           retention-days: 1
 
       - name: Update patched branch
-        if: steps.publish.outputs.value == 'true'
+        if: steps.publish.outputs.value == 'true' && steps.upstream_ref.outputs.clients_only != 'true'
         working-directory: source
         run: |
           set -euo pipefail
@@ -228,10 +253,14 @@ jobs:
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
           release_tag="v${version}-source-${source_sha}"
-          if [[ "${PUBLISH_MODE}" != "release" ]]; then
+          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
+            release_tag="v${version%%-*}-dev.source-${source_sha}"
+          elif [[ "${PUBLISH_MODE}" != "release" ]]; then
             release_tag="${release_tag}-${PUBLISH_MODE}"
           fi
-          if [[ "${version}" == *-* ]]; then
+          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
+            release_channel=dev
+          elif [[ "${version}" == *-* ]]; then
             release_channel=beta
           else
             release_channel=latest
@@ -242,7 +271,7 @@ jobs:
           echo "Resolved version=${version} owner=${owner} source_sha=${source_sha} upstream_sha=${UPSTREAM_SHA} patched_sha=${patched_sha} publish_mode=${PUBLISH_MODE} release_tag=${release_tag} release_channel=${release_channel}"
 
       - name: Create immutable release source tag
-        if: steps.publish.outputs.value == 'true'
+        if: steps.publish.outputs.value == 'true' && steps.upstream_ref.outputs.publish_clients == 'true'
         working-directory: source
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
@@ -289,7 +318,7 @@ jobs:
 
       - name: Check source image status
         id: source_image_status
-        if: steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease'
+        if: steps.upstream_ref.outputs.clients_only != 'true' && (steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
@@ -329,7 +358,7 @@ jobs:
           echo "Source image publish needed for ${PUBLISH_MODE}: ${publish_source_images}"
 
   publish-source-image:
-    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.publish_source_images == 'true'
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.clients_only != 'true' && needs.prepare.outputs.publish_source_images == 'true'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish ${{ matrix.image.name }}
@@ -414,7 +443,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.cache_scope }},mode=max
 
   publish-mod-images:
-    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.publish_mode != 'dev'
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.clients_only != 'true' && needs.prepare.outputs.publish_mode != 'dev'
     needs: prepare
     runs-on: ubuntu-latest
     name: Publish mod ${{ matrix.agent }}
@@ -545,7 +574,7 @@ jobs:
 
   build-linux:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -591,10 +620,11 @@ jobs:
 
       - name: Build Linux desktop artifacts
         env:
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           PASEO_DESKTOP_SMOKE: "1"
-        run: npm run build:desktop -- --publish never --linux --x64
+        run: npm run build:desktop -- --publish never -c.publish.channel="${RELEASE_CHANNEL}" --linux --x64
 
       - name: Upload Linux desktop artifacts
         uses: actions/upload-artifact@v4
@@ -606,7 +636,7 @@ jobs:
 
   build-windows:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: windows-latest
     permissions:
       contents: read
@@ -650,10 +680,11 @@ jobs:
       - name: Build Windows desktop artifacts
         shell: bash
         env:
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           PASEO_DESKTOP_SMOKE: "1"
-        run: npm run build:desktop -- --publish never --win --x64 --arm64
+        run: npm run build:desktop -- --publish never -c.publish.channel="${RELEASE_CHANNEL}" --win --x64 --arm64
 
       - name: Upload Windows desktop artifacts
         uses: actions/upload-artifact@v4
@@ -665,7 +696,7 @@ jobs:
 
   build-macos:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: macos-14
     permissions:
       contents: read
@@ -708,12 +739,13 @@ jobs:
 
       - name: Build ad-hoc-signed macOS desktop artifacts
         env:
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NODE_OPTIONS: --max-old-space-size=4096
         run: >
-          npm run build:desktop -- --publish never --mac --arm64
+          npm run build:desktop -- --publish never -c.publish.channel="${RELEASE_CHANNEL}" --mac --arm64
           -c.mac.identity=-
           -c.mac.notarize=false
           -c.mac.hardenedRuntime=false
@@ -858,7 +890,7 @@ jobs:
 
   build-ios:
     needs: prepare
-    if: needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false'
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: macos-14
     permissions:
       contents: read
@@ -940,6 +972,7 @@ jobs:
     if: >
       always() &&
       needs.prepare.outputs.publish == 'true' &&
+      needs.prepare.outputs.publish_clients == 'true' &&
       needs.prepare.outputs.release_needed == 'true' &&
       (needs.publish-source-image.result == 'success' || needs.publish-source-image.result == 'skipped') &&
       needs.build-linux.result == 'success' &&
@@ -992,6 +1025,7 @@ jobs:
           RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
           IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
+          CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
           tag="${{ needs.prepare.outputs.release_tag }}"
@@ -1004,6 +1038,9 @@ jobs:
             prerelease_flag=(--prerelease)
           fi
           notes="$(printf 'Built from upstream %s with patch source %s.\n\nGHCR: ghcr.io/%s/paseo:%s' "${UPSTREAM_SHA}" "${SOURCE_SHA}" "${IMAGE_OWNER}" "${image_tag}")"
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then
+            notes="$(printf 'Built from upstream %s with patch source %s.' "${UPSTREAM_SHA}" "${SOURCE_SHA}")"
+          fi
           if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "${tag}" release-assets/* --clobber --repo "${GITHUB_REPOSITORY}"
           else

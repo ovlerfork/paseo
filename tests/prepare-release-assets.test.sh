@@ -36,8 +36,8 @@ sha512: arm
 EOF
 }
 
-for channel in latest beta; do
-  if [[ "${channel}" == beta ]]; then
+for channel in latest beta dev; do
+  if [[ "${channel}" != latest ]]; then
     version="0.10.1-beta.1"
   else
     version="0.10.1"
@@ -53,4 +53,4 @@ for channel in latest beta; do
   grep -Fqx "path: Paseo-${version}-arm64.zip" "${root}/out/${channel}-mac.yml"
 done
 
-printf 'release asset preparation handles latest and beta metadata\n'
+printf 'release asset preparation handles latest, beta, and dev metadata\n'

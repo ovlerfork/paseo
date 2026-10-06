@@ -78,7 +78,7 @@ run_metadata() {
     cd "${metadata_source}"
     GITHUB_OUTPUT="${metadata_output}" \
       INPUT_PASEO_VERSION="${input_version}" \
-      PUBLISH_MODE=release \
+      PUBLISH_MODE="${2:-release}" \
       REPO_OWNER=Example \
       UPSTREAM_SHA=upstream-sha \
       SOURCE_SHA=source-sha \
@@ -97,7 +97,18 @@ if run_metadata 9.9.9 >/dev/null 2>&1; then
   exit 1
 fi
 
-assert_prepare_contains "        if: steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease'"
+run_metadata '' release
+assert_equals 'release_channel=latest' "$(grep '^release_channel=' "${metadata_output}")" 'stable updater channel'
+assert_equals 'release_tag=v1.2.3-source-source-sha' "$(grep '^release_tag=' "${metadata_output}")" 'stable source tag'
+printf '{"version":"1.2.4-beta.1"}\n' >"${metadata_source}/package.json"
+run_metadata '' prerelease
+assert_equals 'release_channel=beta' "$(grep '^release_channel=' "${metadata_output}")" 'upstream Beta updater channel'
+assert_equals 'release_tag=v1.2.4-beta.1-source-source-sha-prerelease' "$(grep '^release_tag=' "${metadata_output}")" 'upstream Beta source tag'
+run_metadata '' dev
+assert_equals 'release_channel=dev' "$(grep '^release_channel=' "${metadata_output}")" 'main development updater channel'
+assert_equals 'release_tag=v1.2.4-dev.source-source-sha' "$(grep '^release_tag=' "${metadata_output}")" 'main development source tag has its own prerelease channel'
+
+assert_prepare_contains "        if: steps.upstream_ref.outputs.clients_only != 'true' && (steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease')"
 assert_prepare_contains '          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}'
 assert_prepare_contains '          mapfile -t immutable_tags < <(docker_publish_immutable_tags "${PUBLISH_MODE}" "${RESOLVED_VERSION}" "${SOURCE_SHA}" "${UPSTREAM_SHA}")'
 if ! grep -Fxq '          - prerelease' "${workflow_file}"; then
@@ -176,7 +187,7 @@ assert_release_contains() {
 
 assert_prepare_contains '      release_tag: ${{ steps.meta.outputs.release_tag }}'
 assert_prepare_contains '          release_tag="v${version}-source-${source_sha}"'
-assert_prepare_contains '          if [[ "${PUBLISH_MODE}" != "release" ]]; then'
+assert_prepare_contains '          elif [[ "${PUBLISH_MODE}" != "release" ]]; then'
 assert_prepare_contains '            release_tag="${release_tag}-${PUBLISH_MODE}"'
 assert_prepare_contains '            release_channel=beta'
 assert_prepare_contains '            release_channel=latest'
@@ -265,3 +276,73 @@ if ! grep -Fqx '+  owner: ovlerfork' "${updater_patch}"; then
 fi
 
 printf 'desktop updater release source test passed\n'
+
+# Exercise the workflow resolver against stable, Beta, other prerelease, and draft releases.
+resolver_script="$(sed -n '/^      - name: Resolve upstream source ref$/,/^      - name: Checkout upstream source$/p' "${workflow_file}" | awk '/^        run: \|$/ { in_run=1; next } in_run && /^          / { sub(/^          /, ""); print }')"
+mkdir -p "${metadata_source}/bin"
+cat >"${metadata_source}/bin/gh" <<'GH'
+#!/usr/bin/env bash
+printf '%s\n' '[{"tag_name":"v0.10.3","prerelease":false,"draft":false,"published_at":"2026-10-01"},{"tag_name":"v0.11.0-beta.1","prerelease":true,"draft":false,"published_at":"2026-10-02"},{"tag_name":"v0.11.0-rc.1","prerelease":true,"draft":false,"published_at":"2026-10-03"},{"tag_name":"v0.11.0-beta.2","prerelease":true,"draft":true,"published_at":"2026-10-04"}]'
+GH
+chmod +x "${metadata_source}/bin/gh"
+for schedule in '17 * * * *' '47 * * * *' '*/5 * * * *'; do
+  : >"${metadata_output}"
+  PATH="${metadata_source}/bin:${PATH}" GITHUB_OUTPUT="${metadata_output}" \
+    EVENT_NAME=schedule SCHEDULE="${schedule}" INPUT_PUBLISH_MODE='' INPUT_UPSTREAM_REF='' \
+    bash -c "${resolver_script}"
+  case "${schedule}" in
+    '17 * * * *') expected_ref=v0.10.3; expected_mode=release; clients_only=true; publish_clients=true ;;
+    '47 * * * *') expected_ref=v0.11.0-beta.1; expected_mode=prerelease; clients_only=true; publish_clients=true ;;
+    '*/5 * * * *') expected_ref=v0.11.0-rc.1; expected_mode=prerelease; clients_only=false; publish_clients=false ;;
+  esac
+  assert_equals "ref=${expected_ref}" "$(grep '^ref=' "${metadata_output}")" "${schedule} upstream ref"
+  assert_equals "publish_mode=${expected_mode}" "$(grep '^publish_mode=' "${metadata_output}")" "${schedule} publish mode"
+  assert_equals "clients_only=${clients_only}" "$(grep '^clients_only=' "${metadata_output}")" "${schedule} publishing scope"
+  assert_equals "publish_clients=${publish_clients}" "$(grep '^publish_clients=' "${metadata_output}")" "${schedule} client publishing"
+done
+for mode in release prerelease; do
+  : >"${metadata_output}"
+  PATH="${metadata_source}/bin:${PATH}" GITHUB_OUTPUT="${metadata_output}" \
+    EVENT_NAME=workflow_dispatch SCHEDULE='' INPUT_CLIENTS_ONLY=true \
+    INPUT_PUBLISH_MODE="${mode}" INPUT_UPSTREAM_REF='' bash -c "${resolver_script}"
+  expected_ref=v0.10.3
+  if [[ "${mode}" == prerelease ]]; then expected_ref=v0.11.0-beta.1; fi
+  assert_equals "ref=${expected_ref}" "$(grep '^ref=' "${metadata_output}")" "manual client ${mode} upstream ref"
+  assert_equals 'clients_only=true' "$(grep '^clients_only=' "${metadata_output}")" 'manual clients-only scope'
+  assert_equals 'publish_clients=true' "$(grep '^publish_clients=' "${metadata_output}")" 'manual client publishing'
+done
+for job in publish-source-image publish-mod-images; do
+  condition="$(job_condition "${job}")"
+  if [[ "${condition}" != *"needs.prepare.outputs.clients_only != 'true'"* ]]; then
+    printf '%s must skip client-only schedules\n' "${job}" >&2
+    exit 1
+  fi
+done
+for job in build-linux build-windows build-macos; do
+  job_body="$(sed -n "/^  ${job}:/,/^  [a-z].*:/p" "${workflow_file}")"
+  if ! grep -Fq 'RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}' <<<"${job_body}" \
+    || ! grep -Fq -- '-c.publish.channel="${RELEASE_CHANNEL}"' <<<"${job_body}"; then
+    printf '%s must generate updater metadata for the resolved release channel\n' "${job}" >&2
+    exit 1
+  fi
+done
+printf 'client release channel scheduling and build metadata tests passed\n'
+
+# Docker polling must not occupy the hourly client lanes or publish their assets.
+for job in build-linux build-windows build-macos build-ios publish-release; do
+  condition="$(job_condition "${job}")"
+  if [[ "${condition}" != *"needs.prepare.outputs.publish_clients == 'true'"* ]]; then
+    printf '%s must only run when client publishing is enabled\n' "${job}" >&2
+    exit 1
+  fi
+done
+workflow_lock="$(sed -n '/^concurrency:/,/^env:/p' "${workflow_file}")"
+prepare_lock="$(sed -n '/^    concurrency:/,/^    outputs:/p' <<<"${prepare_job}")"
+for lock in "${workflow_lock}" "${prepare_lock}"; do
+  if ! grep -Fq "github.event_name == 'schedule' && github.event.schedule" <<<"${lock}"; then
+    printf 'workflow and prepare locks must separate scheduled Docker and client lanes\n' >&2
+    exit 1
+  fi
+done
+
+assert_prepare_contains "        if: steps.publish.outputs.value == 'true' && steps.upstream_ref.outputs.publish_clients == 'true'"
