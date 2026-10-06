@@ -637,10 +637,10 @@ function DesktopAppUpdateRow() {
   );
   const releaseChannelOptions = useMemo(
     () => [
-      { value: "stable" as const, label: t("settings.about.releaseChannel.stable") },
-      { value: "beta" as const, label: t("settings.about.releaseChannel.beta") },
+      { value: "stable" as const, label: "Release" },
+      { value: "beta" as const, label: "Dev" },
     ],
-    [t],
+    [],
   );
 
   const handleInstallUpdate = useCallback(() => {
