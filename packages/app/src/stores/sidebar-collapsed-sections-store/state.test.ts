@@ -109,3 +109,43 @@ describe("sidebar expansion", () => {
     expect(store.getState().settings).toEqual(settings);
   });
 });
+
+describe("viewed sidebar content", () => {
+  const focusedBranches = (activity: number) =>
+    branches(activity).map((branch) => ({
+      ...branch,
+      focused: branch.key !== "project-idle",
+    }));
+
+  it("keeps the viewed content open through completion and late updates until navigation", () => {
+    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
+    store.getState().synchronize(focusedBranches(1), "workspace-a/task-a");
+    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
+    expect(store.getState().collapsedProjectKeys).toEqual(new Set(["project-idle"]));
+    store.getState().toggleProjectCollapsed("project-a");
+    store.getState().synchronize(focusedBranches(4), "workspace-a/task-a");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
+    store.getState().toggleProjectCollapsed("project-a");
+    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
+    store.getState().synchronize(branches(0), "workspace-b/task-b");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
+    expect(store.getState().collapsedProjectGroupNames.has("group-a")).toBe(true);
+    expect(store.getState().collapsedPinned).toBe(true);
+  });
+
+  it("releases manual state when switching tasks and follows the viewed status group", () => {
+    store.getState().synchronize(focusedBranches(1), "workspace-a/task-a");
+    store.getState().setProjectCollapsed("project-a", false);
+    store.getState().synchronize(focusedBranches(0), "workspace-a/task-b");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
+    const moved = focusedBranches(0).filter((branch) => branch.kind !== "workspaceGroup");
+    moved.push({ kind: "workspaceGroup", key: "done", activity: 0, focused: true });
+    store.getState().synchronize(moved, "workspace-a/task-b");
+    expect(store.getState().collapsedWorkspaceGroupKeys.has("done")).toBe(false);
+    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, running: false });
+    store.getState().synchronize(moved, "workspace-a/task-b");
+    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
+  });
+});
