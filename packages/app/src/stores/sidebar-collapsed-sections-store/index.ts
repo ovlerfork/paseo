@@ -16,12 +16,15 @@ import {
 interface SidebarCollapsedSectionsState {
   settings: SidebarExpansionSettings;
   branches: SidebarExpansionBranch[];
+  focusKey: string | null;
+  focusDeparted: boolean;
   branchStates: Map<string, SidebarExpansionBranchState>;
   collapsedProjectKeys: Set<string>;
   collapsedProjectGroupNames: Set<string>;
   collapsedWorkspaceGroupKeys: Set<string>;
   collapsedPinned: boolean;
-  synchronize: (branches: SidebarExpansionBranch[]) => void;
+  synchronize: (branches: SidebarExpansionBranch[], focusKey?: string | null) => void;
+  observeFocus: (focusKey: string | null) => void;
   setSettings: (settings: SidebarExpansionSettings) => void;
   resetSettings: () => void;
   toggleProjectCollapsed: (projectKey: string) => void;
@@ -86,16 +89,56 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
           settings,
           ...collapseState(
             state.branches,
-            reconcileSidebarExpansion(new Map(), state.branches, settings),
+            reconcileSidebarExpansion(
+              new Map(),
+              state.branches.map((branch) => ({ ...branch, focused: false })),
+              settings,
+            ),
           ),
         }));
       return {
+        focusKey: null,
+        focusDeparted: false,
         settings: DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
         ...collapseState([], new Map()),
-        synchronize: (branches) =>
+        synchronize: (branches, focusKey = null) =>
           set((state) => {
-            const next = reconcileSidebarExpansion(state.branchStates, branches, state.settings);
+            const returnedAfterDeparture = state.focusDeparted && state.focusKey === focusKey;
+            const focusChanged = state.focusKey !== focusKey || state.focusDeparted;
+            const previous = new Map(state.branchStates);
+            const previousFocused = new Set(
+              state.branches.filter((branch) => branch.focused).map(sidebarBranchId),
+            );
+            const nextFocused = new Set(
+              branches.filter((branch) => branch.focused).map(sidebarBranchId),
+            );
+            for (const id of previousFocused) {
+              if (focusChanged || !nextFocused.has(id)) previous.delete(id);
+            }
+            const wasVisible = [...previousFocused].some(
+              (id) => !state.branchStates.get(id)?.collapsed,
+            );
+            for (const branch of branches) {
+              const id = sidebarBranchId(branch);
+              if (!branch.focused) continue;
+              const current = state.branchStates.get(id);
+              if (
+                (!focusChanged && !previousFocused.has(id) && wasVisible) ||
+                (focusChanged &&
+                  !returnedAfterDeparture &&
+                  previousFocused.has(id) &&
+                  current &&
+                  !current.collapsed)
+              ) {
+                previous.set(id, { activity: branch.activity, collapsed: false, manual: false });
+              }
+            }
+            const next = reconcileSidebarExpansion(previous, branches, state.settings);
             if (
+              !focusChanged &&
+              branches.every(
+                (branch, index) => branch.focused === state.branches[index]?.focused,
+              ) &&
               next.size === state.branchStates.size &&
               [...next].every(([id, value]) => {
                 const current = state.branchStates.get(id);
@@ -107,8 +150,12 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
               })
             )
               return state;
-            return collapseState(branches, next);
+            return { focusKey, focusDeparted: false, ...collapseState(branches, next) };
           }),
+        observeFocus: (focusKey) =>
+          set((state) =>
+            state.focusKey !== focusKey && !state.focusDeparted ? { focusDeparted: true } : state,
+          ),
         setSettings,
         resetSettings: () => setSettings(DEFAULT_SIDEBAR_EXPANSION_SETTINGS),
         toggleProjectCollapsed: (key) => setManual("project", key),
@@ -135,7 +182,11 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
           settings: result.data.settings,
           ...collapseState(
             current.branches,
-            reconcileSidebarExpansion(new Map(), current.branches, result.data.settings),
+            reconcileSidebarExpansion(
+              new Map(),
+              current.branches.map((branch) => ({ ...branch, focused: false })),
+              result.data.settings,
+            ),
           ),
         };
       },
