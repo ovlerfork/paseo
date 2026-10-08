@@ -28,6 +28,9 @@ import {
   sidebarActivity,
   type SidebarExpansionBranch,
 } from "@/stores/sidebar-collapsed-sections-store/state";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { findPaneById, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
 import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
@@ -68,6 +71,16 @@ export function SidebarModelProvider({
 }) {
   const { t } = useTranslation();
   const list = useSidebarWorkspacesList({ enabled: active });
+  const selection = useActiveWorkspaceSelection();
+  const selectedWorkspaceKey = selection ? `${selection.serverId}:${selection.workspaceId}` : null;
+  const persistenceKey = selection ? buildWorkspaceTabPersistenceKey(selection) : null;
+  const focusedTabId = useWorkspaceLayoutStore((state) => {
+    const layout = persistenceKey ? state.layoutByWorkspace[persistenceKey] : null;
+    return layout ? (findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId ?? null) : null;
+  });
+  const focusKey = selectedWorkspaceKey
+    ? JSON.stringify([selectedWorkspaceKey, focusedTabId])
+    : null;
   const showBackground = useSidebarViewStore((state) => state.showBackground);
   const groupMode = useSidebarViewStore((state) => state.groupMode);
   const labelFilter = useSidebarViewStore((state) => state.labelFilter);
@@ -84,6 +97,7 @@ export function SidebarModelProvider({
     (state) => state.collapsedProjectGroupNames,
   );
   const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
+  const observeFocus = useSidebarCollapsedSectionsStore((state) => state.observeFocus);
   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
@@ -195,10 +209,13 @@ export function SidebarModelProvider({
   const expansionBranches = useMemo(() => {
     const activityFor = (keys: Iterable<string>) =>
       sidebarActivity([...keys].map((key) => filteredWorkspaceEntriesByKey.get(key)?.statusBucket));
+    const containsSelection = (keys: Iterable<string>) =>
+      selectedWorkspaceKey !== null && [...keys].includes(selectedWorkspaceKey);
     const branches: SidebarExpansionBranch[] = projection.pinnedGroups.unpinnedProjects.map(
       (project) => ({
         kind: "project",
         key: project.viewKey,
+        focused: containsSelection(project.workspaces.map((workspace) => workspace.workspaceKey)),
         activity: activityFor(project.workspaces.map((workspace) => workspace.workspaceKey)),
       }),
     );
@@ -210,26 +227,43 @@ export function SidebarModelProvider({
       groups.set(project.groupName, keys);
     }
     for (const [key, keys] of groups)
-      branches.push({ kind: "projectGroup", key, activity: activityFor(keys) });
+      branches.push({
+        kind: "projectGroup",
+        key,
+        activity: activityFor(keys),
+        focused: containsSelection(keys),
+      });
     for (const group of projection.workspaceGroups)
       branches.push({
         kind: "workspaceGroup",
         key: group.key,
+        focused: containsSelection(group.rows.map((workspace) => workspace.workspaceKey)),
         activity: sidebarActivity(group.rows.map((workspace) => workspace.statusBucket)),
       });
     branches.push({
       kind: "pinned",
       key: "pinned",
+      focused: containsSelection(
+        projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
+      ),
       activity: activityFor(
         projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
       ),
     });
     return branches;
-  }, [projection.pinnedGroups, projection.workspaceGroups, filteredWorkspaceEntriesByKey]);
+  }, [
+    projection.pinnedGroups,
+    projection.workspaceGroups,
+    filteredWorkspaceEntriesByKey,
+    selectedWorkspaceKey,
+  ]);
   useLayoutEffect(() => {
-    if (active === false) return;
-    synchronizeExpansion(expansionBranches);
-  }, [active, expansionBranches, synchronizeExpansion]);
+    if (active === false) {
+      observeFocus(focusKey);
+      return;
+    }
+    synchronizeExpansion(expansionBranches, focusKey);
+  }, [active, expansionBranches, focusKey, observeFocus, synchronizeExpansion]);
   const value = useMemo(
     () => ({
       ...list,
