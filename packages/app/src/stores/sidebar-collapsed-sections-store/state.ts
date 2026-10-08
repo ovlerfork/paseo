@@ -18,6 +18,7 @@ export interface SidebarExpansionBranch {
   kind: "project" | "projectGroup" | "workspaceGroup" | "pinned";
   key: string;
   activity: number;
+  focused?: boolean;
 }
 
 export function sidebarActivity(buckets: Iterable<string | undefined>): number {
@@ -53,13 +54,15 @@ export function reconcileSidebarExpansion(
       (settings.running ? 1 : 0) | (settings.needsInput ? 2 : 0) | (settings.attention ? 4 : 0);
     next.set(
       id,
-      current?.activity === branch.activity && current.manual
-        ? current
-        : {
-            activity: branch.activity,
-            collapsed: settings.idle === "collapsed" && !(branch.activity & enabledActivity),
-            manual: false,
-          },
+      branch.focused && current && (!current.collapsed || current.manual)
+        ? { ...current, activity: branch.activity }
+        : current?.activity === branch.activity && current.manual
+          ? current
+          : {
+              activity: branch.activity,
+              collapsed: settings.idle === "collapsed" && !(branch.activity & enabledActivity),
+              manual: false,
+            },
     );
   }
   return next;
