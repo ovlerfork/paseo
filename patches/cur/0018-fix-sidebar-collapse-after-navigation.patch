@@ -1,0 +1,481 @@
+From bc733273557bf2342b5bab47d25bdd5bf7b300b9 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 20:54:03 +0000
+Subject: [PATCH] Keep viewed sidebar branches open until navigation
+
+---
+ .../components/sidebar/sidebar-model.test.tsx | 190 ++++++++++++++++++
+ .../src/components/sidebar/sidebar-model.tsx  |  38 +++-
+ .../sidebar-collapsed-sections-store/index.ts |  51 ++++-
+ .../state.test.ts                             |  40 ++++
+ .../sidebar-collapsed-sections-store/state.ts |  17 +-
+ 5 files changed, 319 insertions(+), 17 deletions(-)
+ create mode 100644 packages/app/src/components/sidebar/sidebar-model.test.tsx
+
+diff --git a/packages/app/src/components/sidebar/sidebar-model.test.tsx b/packages/app/src/components/sidebar/sidebar-model.test.tsx
+new file mode 100644
+index 0000000..e314302
+--- /dev/null
++++ b/packages/app/src/components/sidebar/sidebar-model.test.tsx
+@@ -0,0 +1,190 @@
++/** @vitest-environment jsdom */
++import React from "react";
++import { act, cleanup, render } from "@testing-library/react";
++import { afterEach, expect, it, vi } from "vitest";
++import type {
++  SidebarProjectEntry,
++  SidebarWorkspaceEntry,
++  SidebarWorkspacePlacement,
++} from "@/hooks/use-sidebar-workspaces-list";
++import { SidebarModelProvider } from "./sidebar-model";
++import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
++import { useSidebarViewStore } from "@/stores/sidebar-view-store";
++
++const inputs = vi.hoisted(() => ({
++  list: {},
++  entries: new Map(),
++  selection: { serverId: "srv", workspaceId: "selected" },
++  tabId: "task-a",
++  pinnedKeys: { pinnedWorkspaceKeys: [] as string[], pinnedAtByKey: {} },
++  hosts: [],
++}));
++vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
++vi.mock("@/hooks/use-sidebar-workspaces-list", () => ({
++  useSidebarWorkspacesList: () => inputs.list,
++}));
++vi.mock("@/hooks/use-sidebar-workspace-entries", () => ({
++  useSidebarWorkspaceEntries: () => inputs.entries,
++}));
++vi.mock("@/hooks/use-sidebar-pins", async (importOriginal) => ({
++  ...(await importOriginal<typeof import("@/hooks/use-sidebar-pins")>()),
++  usePinnedSidebarKeys: () => inputs.pinnedKeys,
++}));
++vi.mock("@/stores/navigation-active-workspace-store", () => ({
++  useActiveWorkspaceSelection: () => inputs.selection,
++}));
++vi.mock("@/stores/workspace-layout-store", () => ({
++  useWorkspaceLayoutStore: (selector: (state: unknown) => unknown) =>
++    selector({ layoutByWorkspace: { "srv:selected": { root: {}, focusedPaneId: "main" } } }),
++  findPaneById: () => ({ focusedTabId: inputs.tabId }),
++}));
++vi.mock("@/workspace-labels", () => ({
++  useWorkspaceLabelProjection: () => ({ hosts: inputs.hosts }),
++  hasAuthoritativeWorkspaceLabelCatalog: () => false,
++}));
++vi.mock("@react-native-async-storage/async-storage", () => ({
++  default: {
++    getItem: vi.fn().mockResolvedValue(null),
++    setItem: vi.fn().mockResolvedValue(undefined),
++    removeItem: vi.fn(),
++  },
++}));
++afterEach(cleanup);
++function makeWorkspace(
++  id: string,
++  statusBucket: SidebarWorkspaceEntry["statusBucket"] = "done",
++  labels: string[] = [],
++  projectViewKey = "project",
++) {
++  const placement: SidebarWorkspacePlacement = {
++    workspaceKey: `srv:${id}`,
++    serverId: "srv",
++    workspaceId: id,
++    projectViewKey,
++    projectName: "Project",
++    projectKind: "git",
++    workspaceKind: "worktree",
++    name: id,
++  };
++  const entry: SidebarWorkspaceEntry = {
++    ...placement,
++    workspaceDirectory: "",
++    workspaceDirectoryLabel: "",
++    title: null,
++    currentBranch: null,
++    statusBucket,
++    statusEnteredAt: null,
++    archivingAt: null,
++    diffStat: null,
++    prHint: null,
++    archiveHasUncommittedChanges: null,
++    archiveUnpushedCommitCount: null,
++    scripts: [],
++    hasRunningScripts: false,
++    labels,
++  };
++  return { placement, entry };
++}
++
++function makeProject(
++  workspaces: SidebarWorkspacePlacement[],
++  viewKey = "project",
++): SidebarProjectEntry {
++  return {
++    viewKey,
++    projectName: "Project",
++    projectKind: "git",
++    iconWorkingDir: `/repo/${viewKey}`,
++    hosts: [
++      {
++        serverId: "srv",
++        projectId: viewKey,
++        iconWorkingDir: `/repo/${viewKey}`,
++        worktreeSupport: "supported" as const,
++      },
++    ],
++    workspaces,
++  };
++}
++
++it("maps the viewed workspace to project ancestors, moved status groups and pinned content", () => {
++  const store = useSidebarCollapsedSectionsStore;
++  store.getState().synchronize([]);
++  store.getState().resetSettings();
++  useSidebarViewStore.setState({ groupMode: "project", projectFilters: [] });
++  const selected = makeWorkspace("selected", "running");
++  const project = { ...makeProject([selected.placement]), groupName: "Group" };
++  inputs.list = {
++    projects: [project],
++    workspacePlacements: [selected.placement],
++    projectNamesByViewKey: new Map([["project", "Project"]]),
++  };
++  inputs.entries = new Map([[selected.entry.workspaceKey, selected.entry]]);
++  const view = render(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedProjectKeys.has("project")).toBe(false);
++  expect(store.getState().collapsedProjectGroupNames.has("Group")).toBe(false);
++  inputs.entries = new Map([
++    [selected.entry.workspaceKey, { ...selected.entry, statusBucket: "done" }],
++  ]);
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedProjectKeys.has("project")).toBe(false);
++  act(() => {
++    store.getState().toggleProjectCollapsed("project");
++  });
++  expect(store.getState().collapsedProjectKeys.has("project")).toBe(true);
++  inputs.tabId = "task-b";
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedProjectKeys.has("project")).toBe(true);
++  act(() => {
++    store.getState().toggleProjectCollapsed("project");
++  });
++  act(() => {
++    useSidebarViewStore.setState({ groupMode: "status" });
++  });
++  const status = store
++    .getState()
++    .branches.find((branch) => branch.kind === "workspaceGroup" && branch.focused);
++  expect(status).toBeDefined();
++  expect(store.getState().collapsedWorkspaceGroupKeys.has(status!.key)).toBe(false);
++  inputs.entries = new Map([[selected.entry.workspaceKey, selected.entry]]);
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  inputs.entries = new Map([
++    [selected.entry.workspaceKey, { ...selected.entry, statusBucket: "done" }],
++  ]);
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedWorkspaceGroupKeys.has(status!.key)).toBe(false);
++  inputs.pinnedKeys = { pinnedWorkspaceKeys: [selected.entry.workspaceKey], pinnedAtByKey: {} };
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedPinned).toBe(false);
++  inputs.selection = { serverId: "srv", workspaceId: "other" };
++  view.rerender(
++    <SidebarModelProvider>
++      <span />
++    </SidebarModelProvider>,
++  );
++  expect(store.getState().collapsedPinned).toBe(true);
++});
+diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
+index 96ff1fa..c6eddb3 100644
+--- a/packages/app/src/components/sidebar/sidebar-model.tsx
++++ b/packages/app/src/components/sidebar/sidebar-model.tsx
+@@ -28,6 +28,9 @@ import {
+   sidebarActivity,
+   type SidebarExpansionBranch,
+ } from "@/stores/sidebar-collapsed-sections-store/state";
++import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
++import { findPaneById, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
++import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+ import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
+ import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
+ import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
+@@ -68,6 +71,16 @@ export function SidebarModelProvider({
+ }) {
+   const { t } = useTranslation();
+   const list = useSidebarWorkspacesList({ enabled: active });
++  const selection = useActiveWorkspaceSelection();
++  const selectedWorkspaceKey = selection ? `${selection.serverId}:${selection.workspaceId}` : null;
++  const persistenceKey = selection ? buildWorkspaceTabPersistenceKey(selection) : null;
++  const focusedTabId = useWorkspaceLayoutStore((state) => {
++    const layout = persistenceKey ? state.layoutByWorkspace[persistenceKey] : null;
++    return layout ? (findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId ?? null) : null;
++  });
++  const focusKey = selectedWorkspaceKey
++    ? JSON.stringify([selectedWorkspaceKey, focusedTabId])
++    : null;
+   const groupMode = useSidebarViewStore((state) => state.groupMode);
+   const labelFilter = useSidebarViewStore((state) => state.labelFilter);
+   const projectFilters = useSidebarViewStore((state) => state.projectFilters);
+@@ -188,10 +201,13 @@ export function SidebarModelProvider({
+   const expansionBranches = useMemo(() => {
+     const activityFor = (keys: Iterable<string>) =>
+       sidebarActivity([...keys].map((key) => filteredWorkspaceEntriesByKey.get(key)?.statusBucket));
++    const containsSelection = (keys: Iterable<string>) =>
++      selectedWorkspaceKey !== null && [...keys].includes(selectedWorkspaceKey);
+     const branches: SidebarExpansionBranch[] = projection.pinnedGroups.unpinnedProjects.map(
+       (project) => ({
+         kind: "project",
+         key: project.viewKey,
++        focused: containsSelection(project.workspaces.map((workspace) => workspace.workspaceKey)),
+         activity: activityFor(project.workspaces.map((workspace) => workspace.workspaceKey)),
+       }),
+     );
+@@ -203,26 +219,40 @@ export function SidebarModelProvider({
+       groups.set(project.groupName, keys);
+     }
+     for (const [key, keys] of groups)
+-      branches.push({ kind: "projectGroup", key, activity: activityFor(keys) });
++      branches.push({
++        kind: "projectGroup",
++        key,
++        activity: activityFor(keys),
++        focused: containsSelection(keys),
++      });
+     for (const group of projection.workspaceGroups)
+       branches.push({
+         kind: "workspaceGroup",
+         key: group.key,
++        focused: containsSelection(group.rows.map((workspace) => workspace.workspaceKey)),
+         activity: sidebarActivity(group.rows.map((workspace) => workspace.statusBucket)),
+       });
+     branches.push({
+       kind: "pinned",
+       key: "pinned",
++      focused: containsSelection(
++        projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
++      ),
+       activity: activityFor(
+         projection.pinnedGroups.pinnedChats.map((workspace) => workspace.workspaceKey),
+       ),
+     });
+     return branches;
+-  }, [projection.pinnedGroups, projection.workspaceGroups, filteredWorkspaceEntriesByKey]);
++  }, [
++    projection.pinnedGroups,
++    projection.workspaceGroups,
++    filteredWorkspaceEntriesByKey,
++    selectedWorkspaceKey,
++  ]);
+   useLayoutEffect(() => {
+     if (active === false) return;
+-    synchronizeExpansion(expansionBranches);
+-  }, [active, expansionBranches, synchronizeExpansion]);
++    synchronizeExpansion(expansionBranches, focusKey);
++  }, [active, expansionBranches, focusKey, synchronizeExpansion]);
+   const value = useMemo(
+     () => ({
+       ...list,
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
+index f495eda..80cacaa 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
+@@ -16,12 +16,13 @@ import {
+ interface SidebarCollapsedSectionsState {
+   settings: SidebarExpansionSettings;
+   branches: SidebarExpansionBranch[];
++  focusKey: string | null;
+   branchStates: Map<string, SidebarExpansionBranchState>;
+   collapsedProjectKeys: Set<string>;
+   collapsedProjectGroupNames: Set<string>;
+   collapsedWorkspaceGroupKeys: Set<string>;
+   collapsedPinned: boolean;
+-  synchronize: (branches: SidebarExpansionBranch[]) => void;
++  synchronize: (branches: SidebarExpansionBranch[], focusKey?: string | null) => void;
+   setSettings: (settings: SidebarExpansionSettings) => void;
+   resetSettings: () => void;
+   toggleProjectCollapsed: (projectKey: string) => void;
+@@ -86,16 +87,50 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
+           settings,
+           ...collapseState(
+             state.branches,
+-            reconcileSidebarExpansion(new Map(), state.branches, settings),
++            reconcileSidebarExpansion(
++              new Map(),
++              state.branches.map((branch) => ({ ...branch, focused: false })),
++              settings,
++            ),
+           ),
+         }));
+       return {
++        focusKey: null,
+         settings: DEFAULT_SIDEBAR_EXPANSION_SETTINGS,
+         ...collapseState([], new Map()),
+-        synchronize: (branches) =>
++        synchronize: (branches, focusKey = null) =>
+           set((state) => {
+-            const next = reconcileSidebarExpansion(state.branchStates, branches, state.settings);
++            const focusChanged = state.focusKey !== focusKey;
++            const previous = new Map(state.branchStates);
++            const previousFocused = new Set(
++              state.branches.filter((branch) => branch.focused).map(sidebarBranchId),
++            );
++            const nextFocused = new Set(
++              branches.filter((branch) => branch.focused).map(sidebarBranchId),
++            );
++            for (const id of previousFocused) {
++              if (focusChanged || !nextFocused.has(id)) previous.delete(id);
++            }
++            const wasVisible = [...previousFocused].some(
++              (id) => !state.branchStates.get(id)?.collapsed,
++            );
++            for (const branch of branches) {
++              const id = sidebarBranchId(branch);
++              if (!branch.focused) continue;
++              const current = state.branchStates.get(id);
++              if (
++                (!focusChanged && !previousFocused.has(id) && wasVisible) ||
++                (focusChanged && previousFocused.has(id) && current && !current.collapsed)
++              ) {
++                previous.set(id, { activity: branch.activity, collapsed: false, manual: false });
++              }
++            }
++            const next = reconcileSidebarExpansion(previous, branches, state.settings);
+             if (
++              !focusChanged &&
++              branches.every(
++                (branch, index) => branch.focused === state.branches[index]?.focused,
++              ) &&
+               next.size === state.branchStates.size &&
+               [...next].every(([id, value]) => {
+                 const current = state.branchStates.get(id);
+@@ -107,7 +142,7 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
+               })
+             )
+               return state;
+-            return collapseState(branches, next);
++            return { focusKey, ...collapseState(branches, next) };
+           }),
+         setSettings,
+         resetSettings: () => setSettings(DEFAULT_SIDEBAR_EXPANSION_SETTINGS),
+@@ -135,7 +170,11 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
+           settings: result.data.settings,
+           ...collapseState(
+             current.branches,
+-            reconcileSidebarExpansion(new Map(), current.branches, result.data.settings),
++            reconcileSidebarExpansion(
++              new Map(),
++              current.branches.map((branch) => ({ ...branch, focused: false })),
++              result.data.settings,
++            ),
+           ),
+         };
+       },
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
+index 6e65e94..948dfd4 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
+@@ -109,3 +109,43 @@ describe("sidebar expansion", () => {
+     expect(store.getState().settings).toEqual(settings);
+   });
+ });
++
++describe("viewed sidebar content", () => {
++  const focusedBranches = (activity: number) =>
++    branches(activity).map((branch) => ({
++      ...branch,
++      focused: branch.key !== "project-idle",
++    }));
++
++  it("keeps the viewed content open through completion and late updates until navigation", () => {
++    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    store.getState().synchronize(focusedBranches(1), "workspace-a/task-a");
++    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
++    expect(store.getState().collapsedProjectKeys).toEqual(new Set(["project-idle"]));
++    store.getState().toggleProjectCollapsed("project-a");
++    store.getState().synchronize(focusedBranches(4), "workspace-a/task-a");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    store.getState().toggleProjectCollapsed("project-a");
++    store.getState().synchronize(focusedBranches(0), "workspace-a/task-a");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
++    store.getState().synchronize(branches(0), "workspace-b/task-b");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++    expect(store.getState().collapsedProjectGroupNames.has("group-a")).toBe(true);
++    expect(store.getState().collapsedPinned).toBe(true);
++  });
++
++  it("releases manual state when switching tasks and follows the viewed status group", () => {
++    store.getState().synchronize(focusedBranches(1), "workspace-a/task-a");
++    store.getState().setProjectCollapsed("project-a", false);
++    store.getState().synchronize(focusedBranches(0), "workspace-a/task-b");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(false);
++    const moved = focusedBranches(0).filter((branch) => branch.kind !== "workspaceGroup");
++    moved.push({ kind: "workspaceGroup", key: "done", activity: 0, focused: true });
++    store.getState().synchronize(moved, "workspace-a/task-b");
++    expect(store.getState().collapsedWorkspaceGroupKeys.has("done")).toBe(false);
++    store.getState().setSettings({ ...DEFAULT_SIDEBAR_EXPANSION_SETTINGS, running: false });
++    store.getState().synchronize(moved, "workspace-a/task-b");
++    expect(store.getState().collapsedProjectKeys.has("project-a")).toBe(true);
++  });
++});
+diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
+index 1978cfc..40d674c 100644
+--- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
++++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
+@@ -18,6 +18,7 @@ export interface SidebarExpansionBranch {
+   kind: "project" | "projectGroup" | "workspaceGroup" | "pinned";
+   key: string;
+   activity: number;
++  focused?: boolean;
+ }
+ 
+ export function sidebarActivity(buckets: Iterable<string | undefined>): number {
+@@ -53,13 +54,15 @@ export function reconcileSidebarExpansion(
+       (settings.running ? 1 : 0) | (settings.needsInput ? 2 : 0) | (settings.attention ? 4 : 0);
+     next.set(
+       id,
+-      current?.activity === branch.activity && current.manual
+-        ? current
+-        : {
+-            activity: branch.activity,
+-            collapsed: settings.idle === "collapsed" && !(branch.activity & enabledActivity),
+-            manual: false,
+-          },
++      branch.focused && current && (!current.collapsed || current.manual)
++        ? { ...current, activity: branch.activity }
++        : current?.activity === branch.activity && current.manual
++          ? current
++          : {
++              activity: branch.activity,
++              collapsed: settings.idle === "collapsed" && !(branch.activity & enabledActivity),
++              manual: false,
++            },
+     );
+   }
+   return next;
+-- 
+2.43.0
+
