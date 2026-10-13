@@ -255,6 +255,8 @@ jobs:
           release_tag="v${version}-source-${source_sha}"
           if [[ "${PUBLISH_MODE}" == "dev" ]]; then
             release_tag="v${version%%-*}-dev.source-${source_sha}"
+          elif [[ "${PUBLISH_MODE}" == "release" && "${version}" != *-* ]]; then
+            release_tag="v${version}+source.${source_sha}"
           elif [[ "${PUBLISH_MODE}" != "release" ]]; then
             release_tag="${release_tag}-${PUBLISH_MODE}"
           fi
