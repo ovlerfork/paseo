@@ -81,7 +81,7 @@ run_metadata() {
       PUBLISH_MODE="${2:-release}" \
       REPO_OWNER=Example \
       UPSTREAM_SHA=upstream-sha \
-      SOURCE_SHA=source-sha \
+      SOURCE_SHA=51f02260a \
       bash -c "${metadata_script}"
   )
 }
@@ -99,14 +99,14 @@ fi
 
 run_metadata '' release
 assert_equals 'release_channel=latest' "$(grep '^release_channel=' "${metadata_output}")" 'stable updater channel'
-assert_equals 'release_tag=v1.2.3-source-source-sha' "$(grep '^release_tag=' "${metadata_output}")" 'stable source tag'
+assert_equals 'release_tag=v1.2.3+source.51f02260a' "$(grep '^release_tag=' "${metadata_output}")" 'stable source tag uses build metadata'
 printf '{"version":"1.2.4-beta.1"}\n' >"${metadata_source}/package.json"
 run_metadata '' prerelease
 assert_equals 'release_channel=beta' "$(grep '^release_channel=' "${metadata_output}")" 'upstream Beta updater channel'
-assert_equals 'release_tag=v1.2.4-beta.1-source-source-sha-prerelease' "$(grep '^release_tag=' "${metadata_output}")" 'upstream Beta source tag'
+assert_equals 'release_tag=v1.2.4-beta.1-source-51f02260a-prerelease' "$(grep '^release_tag=' "${metadata_output}")" 'upstream Beta source tag'
 run_metadata '' dev
 assert_equals 'release_channel=dev' "$(grep '^release_channel=' "${metadata_output}")" 'main development updater channel'
-assert_equals 'release_tag=v1.2.4-dev.source-source-sha' "$(grep '^release_tag=' "${metadata_output}")" 'main development source tag has its own prerelease channel'
+assert_equals 'release_tag=v1.2.4-dev.source-51f02260a' "$(grep '^release_tag=' "${metadata_output}")" 'main development source tag has its own prerelease channel'
 
 assert_prepare_contains "        if: steps.upstream_ref.outputs.clients_only != 'true' && (steps.meta.outputs.publish_mode == 'dev' || steps.meta.outputs.publish_mode == 'prerelease')"
 assert_prepare_contains '          SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}'
@@ -187,6 +187,7 @@ assert_release_contains() {
 
 assert_prepare_contains '      release_tag: ${{ steps.meta.outputs.release_tag }}'
 assert_prepare_contains '          release_tag="v${version}-source-${source_sha}"'
+assert_prepare_contains '            release_tag="v${version}+source.${source_sha}"'
 assert_prepare_contains '          elif [[ "${PUBLISH_MODE}" != "release" ]]; then'
 assert_prepare_contains '            release_tag="${release_tag}-${PUBLISH_MODE}"'
 assert_prepare_contains '            release_channel=beta'
