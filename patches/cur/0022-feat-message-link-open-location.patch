@@ -1,11 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
-Date: Fri, 23 Oct 2026 06:29:00 +0000
+Date: Fri, 23 Oct 2026 06:36:52 +0000
 Subject: [PATCH] Choose where AI message links open
 
 
 diff --git a/packages/app/src/assistant-file-links/provider.tsx b/packages/app/src/assistant-file-links/provider.tsx
-index 967e1c32e..4cd61f448 100644
+index 967e1c32e..43219cc4e 100644
 --- a/packages/app/src/assistant-file-links/provider.tsx
 +++ b/packages/app/src/assistant-file-links/provider.tsx
 @@ -24,6 +24,7 @@ export interface AssistantFileLinkResolverConfig {
@@ -16,7 +16,7 @@ index 967e1c32e..4cd61f448 100644
  }
  
  export interface AssistantFileLinkResolverProviderProps extends AssistantFileLinkResolverConfig {
-@@ -44,16 +45,27 @@ export function AssistantFileLinkResolverProvider({
+@@ -44,8 +45,10 @@ export function AssistantFileLinkResolverProvider({
    workspaceRoot,
    onOpenWorkspaceFile,
    toast,
@@ -24,27 +24,18 @@ index 967e1c32e..4cd61f448 100644
    children,
  }: AssistantFileLinkResolverProviderProps) {
 +  const parent = useAssistantFileLinkEnvironment();
-+  const openUrlInBrowserTab = onOpenUrlInBrowserTab ?? parent.onOpenUrlInBrowserTab;
    const configRef = useRef<AssistantFileLinkResolverConfig>({
      client,
      serverId,
-     workspaceRoot,
-     onOpenWorkspaceFile,
-     toast,
-+    onOpenUrlInBrowserTab: openUrlInBrowserTab,
-   });
--  configRef.current = { client, serverId, workspaceRoot, onOpenWorkspaceFile, toast };
-+  configRef.current = {
-+    client,
-+    serverId,
-+    workspaceRoot,
-+    onOpenWorkspaceFile,
-+    toast,
-+    onOpenUrlInBrowserTab: openUrlInBrowserTab,
-+  };
+@@ -65,6 +68,8 @@ export function AssistantFileLinkResolverProvider({
+     return { entries: result.entries, error: result.error };
+   }, []);
  
-   const getDirectorySuggestions = useCallback<GetDirectorySuggestions>(async (input) => {
-     const activeClient = configRef.current.client;
++  configRef.current.onOpenUrlInBrowserTab = onOpenUrlInBrowserTab ?? parent.onOpenUrlInBrowserTab;
++
+   const value = useMemo<AssistantFileLinkResolverContextValue>(
+     () => ({ configRef, getDirectorySuggestions }),
+     [getDirectorySuggestions],
 diff --git a/packages/app/src/components/markdown/renderers.web.tsx b/packages/app/src/components/markdown/renderers.web.tsx
 index 1d05b3b60..2f854a435 100644
 --- a/packages/app/src/components/markdown/renderers.web.tsx
@@ -133,13 +124,13 @@ index d5a224450..c6f0329c2 100644
          client={client}
          workspaceRoot={workspaceRoot}
 diff --git a/packages/app/src/hooks/use-settings/storage.test.ts b/packages/app/src/hooks/use-settings/storage.test.ts
-index 6d9c8d4c7..7c969bb9f 100644
+index 6d9c8d4c7..6639e87d0 100644
 --- a/packages/app/src/hooks/use-settings/storage.test.ts
 +++ b/packages/app/src/hooks/use-settings/storage.test.ts
-@@ -44,6 +44,24 @@ function makeDeps(
- }
+@@ -53,6 +53,24 @@ describe("loadAppSettingsFromStorage", () => {
+     expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
+   });
  
- describe("loadAppSettingsFromStorage", () => {
 +  it("defaults message links to the system browser for existing settings and saves a new choice", async () => {
 +    const deps = makeDeps({
 +      storage: createInMemoryKeyValueStorage({
@@ -158,9 +149,9 @@ index 6d9c8d4c7..7c969bb9f 100644
 +    });
 +  });
 +
-   it("preserves a persisted steer send behavior", async () => {
-     const deps = makeDeps({
-       storage: createInMemoryKeyValueStorage({
+   it("keeps valid settings when another build wrote unknown fields or enum values", async () => {
+     const stored = {
+       theme: "dark",
 diff --git a/packages/app/src/hooks/use-settings/storage.ts b/packages/app/src/hooks/use-settings/storage.ts
 index 54ee6b10b..d2c5c5851 100644
 --- a/packages/app/src/hooks/use-settings/storage.ts
