@@ -2233,6 +2233,11 @@ export const en = {
           side: "On the side",
           explorer: "Explorer sidebar",
         },
+        messageLinks: {
+          label: "Clicking a link in an AI message",
+          external: "System default browser",
+          inApp: "Paseo browser",
+        },
         sources: {
           explorerFiles: {
             label: "Clicking a file in the Explorer sidebar",
