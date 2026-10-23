@@ -668,14 +668,14 @@ jobs:
           CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
-          args=()
-          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          set --
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then set -- --clients-only; fi
           python ../release-policy/scripts/prepare-release-assets.py publish \
             --platform linux --artifacts packages/desktop/release \
             --tag "${RELEASE_TAG}" --version "${VERSION}" \
             --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
             --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
-            --owner "${IMAGE_OWNER}" "${args[@]}"
+            --owner "${IMAGE_OWNER}" "$@"
 
   build-windows:
     needs: prepare
@@ -769,14 +769,14 @@ jobs:
           CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
-          args=()
-          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          set --
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then set -- --clients-only; fi
           python ../release-policy/scripts/prepare-release-assets.py publish \
             --platform windows --artifacts packages/desktop/release \
             --tag "${RELEASE_TAG}" --version "${VERSION}" \
             --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
             --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
-            --owner "${IMAGE_OWNER}" "${args[@]}"
+            --owner "${IMAGE_OWNER}" "$@"
 
   build-macos:
     needs: prepare
@@ -1004,14 +1004,14 @@ jobs:
           CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
-          args=()
-          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          set --
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then set -- --clients-only; fi
           python ../release-policy/scripts/prepare-release-assets.py publish \
             --platform macos --artifacts packages/desktop/release \
             --tag "${RELEASE_TAG}" --version "${VERSION}" \
             --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
             --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
-            --owner "${IMAGE_OWNER}" "${args[@]}"
+            --owner "${IMAGE_OWNER}" "$@"
 
   build-ios:
     needs: prepare
@@ -1127,11 +1127,11 @@ jobs:
           CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
-          args=()
-          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          set --
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then set -- --clients-only; fi
           python ../release-policy/scripts/prepare-release-assets.py publish \
             --platform ios --artifacts . \
             --tag "${RELEASE_TAG}" --version "${VERSION}" \
             --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
             --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
-            --owner "${IMAGE_OWNER}" "${args[@]}"
+            --owner "${IMAGE_OWNER}" "$@"
