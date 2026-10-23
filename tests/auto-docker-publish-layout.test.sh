@@ -248,11 +248,21 @@ if ! grep -Fqx '          NODE_OPTIONS: --max-old-space-size=4096' <<<"${macos_j
   printf 'macOS desktop build must raise the observed V8 old-space ceiling\n' >&2
   exit 1
 fi
-if ! grep -Fqx '      - name: Select supported Xcode' <<<"${ios_job}" \
-  || ! grep -Fqx '        run: sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer' <<<"${ios_job}"; then
-  printf 'iOS build must select the Xcode version required by locked React Native\n' >&2
+if ! grep -Fqx "    runs-on: \${{ needs.prepare.outputs.publish_mode == 'release' && 'macos-14' || 'macos-15' }}" <<<"${ios_job}" \
+  || ! grep -Fqx '      - name: Select supported Xcode' <<<"${ios_job}" \
+  || ! grep -Fqx '          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}' <<<"${ios_job}"; then
+  printf 'iOS build must select a runner and Xcode by publish mode\n' >&2
   exit 1
 fi
+xcode_selection_script="$(sed -n '/^      - name: Select supported Xcode$/,/^      - name: Build unsigned iOS IPA$/p' <<<"${ios_job}" | sed -n '/^        run: |$/,/^$/ { /^          / { s/^          //; p; } }')"
+sudo() { printf '%s\n' "$*"; }
+export -f sudo
+assert_equals 'xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer' \
+  "$(PUBLISH_MODE=release bash -c "${xcode_selection_script}")" 'stable iOS Xcode selection'
+assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer' \
+  "$(PUBLISH_MODE=dev bash -c "${xcode_selection_script}")" 'development iOS Xcode selection'
+assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer' \
+  "$(PUBLISH_MODE=prerelease bash -c "${xcode_selection_script}")" 'prerelease iOS Xcode selection'
 
 assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]"
 assert_release_contains '          path: release-policy'

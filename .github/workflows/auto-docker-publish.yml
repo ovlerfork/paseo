@@ -893,7 +893,7 @@ jobs:
   build-ios:
     needs: prepare
     if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
-    runs-on: macos-14
+    runs-on: ${{ needs.prepare.outputs.publish_mode == 'release' && 'macos-14' || 'macos-15' }}
     permissions:
       contents: read
     defaults:
@@ -934,7 +934,14 @@ jobs:
         run: npm ci
 
       - name: Select supported Xcode
-        run: sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
+        env:
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+        run: |
+          if [[ "${PUBLISH_MODE}" == "release" ]]; then
+            sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
+          else
+            sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          fi
 
       - name: Build unsigned iOS IPA
         shell: bash
