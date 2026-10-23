@@ -2,7 +2,7 @@
 set -euo pipefail
 
 workflow_file="${WORKFLOW_FILE:-$(dirname "$0")/../.github/workflows/auto-docker-publish.yml}"
-prepare_job="$(sed -n '/^  prepare:/,/^  publish-source-image:/p' "${workflow_file}")"
+prepare_job="$(sed -n '/^  prepare:/,/^  publish-ready-draft:/p' "${workflow_file}")"
 source_identity_step="$(sed -n '/^      - name: Record pre-sanitization source SHA/,/^      - name: Sanitize generated branch/p' <<<"${prepare_job}")"
 source_job="$(sed -n '/^  publish-source-image:/,/^  publish-mod-images:/p' "${workflow_file}")"
 
@@ -190,6 +190,7 @@ assert_prepare_contains '      linux_needed: ${{ steps.release_status.outputs.li
 assert_prepare_contains '      windows_needed: ${{ steps.release_status.outputs.windows_needed }}'
 assert_prepare_contains '      macos_needed: ${{ steps.release_status.outputs.macos_needed }}'
 assert_prepare_contains '      ios_needed: ${{ steps.release_status.outputs.ios_needed }}'
+assert_prepare_contains '      draft_ready: ${{ steps.release_status.outputs.draft_ready }}'
 assert_prepare_contains '          python3 patchset/scripts/prepare-release-assets.py status \'
 if [[ -f "$(dirname "${workflow_file}")/auto-desktop-build.yml" ]]; then
   printf 'desktop builds must run from the release workflow, not a separate source preparation workflow\n' >&2
@@ -268,6 +269,20 @@ for platform in linux windows macos ios; do
 done
 if grep -Fq '  publish-release:' "${workflow_file}"; then
   printf 'release publication must not wait for all client build jobs\n' >&2
+  exit 1
+fi
+draft_condition="$(job_condition publish-ready-draft)"
+for requirement in \
+  "needs.prepare.outputs.publish == 'true'" \
+  "needs.prepare.outputs.publish_clients == 'true'" \
+  "needs.prepare.outputs.draft_ready == 'true'"; do
+  if [[ "${draft_condition}" != *"${requirement}"* ]]; then
+    printf 'ready draft publication is missing guard: %s\n' "${requirement}" >&2
+    exit 1
+  fi
+done
+if ! grep -Fqx '        run: gh release edit "${RELEASE_TAG}" --draft=false --repo "${GITHUB_REPOSITORY}"' "${workflow_file}"; then
+  printf 'ready draft must be published by CI without client rebuilds\n' >&2
   exit 1
 fi
 

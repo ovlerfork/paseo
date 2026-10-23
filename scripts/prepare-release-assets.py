@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -49,8 +50,8 @@ def gh(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return result
 
 
-def release_assets(tag: str, repo: str) -> set[str] | None:
-    result = gh("release", "view", tag, "--repo", repo, "--json", "assets", check=False)
+def release_info(tag: str, repo: str) -> tuple[set[str], bool] | None:
+    result = gh("release", "view", tag, "--repo", repo, "--json", "assets,isDraft", check=False)
     if result.returncode:
         # A failed lookup can also mean an API error. Do not rebuild or create over it.
         api_error = gh("api", f"repos/{repo}/releases/tags/{tag}", check=False)
@@ -59,16 +60,21 @@ def release_assets(tag: str, repo: str) -> set[str] | None:
         if "404" not in api_error.stderr:
             raise RuntimeError(api_error.stderr or result.stderr)
         return None
-    return {item["name"] for item in json.loads(result.stdout)["assets"]}
+    document = json.loads(result.stdout)
+    return {item["name"] for item in document["assets"]}, document["isDraft"]
 
 
 def status(args: argparse.Namespace) -> None:
-    existing = release_assets(args.tag, args.repo) or set()
+    info = release_info(args.tag, args.repo)
+    existing, is_draft = info if info is not None else (set(), False)
+    complete = False
     with open(args.output, "a") as output:
         for platform, required in REQUIRED_ASSETS.items():
             needed = not set(required(args.version, args.channel)).issubset(existing)
+            complete = complete or not needed
             print(f"{platform}_needed={str(needed).lower()}", file=output)
             print(f"{platform} release assets needed: {needed}")
+        print(f"draft_ready={str(is_draft and complete).lower()}", file=output)
 
 
 def collect_files(source: pathlib.Path, output: pathlib.Path) -> None:
@@ -91,6 +97,11 @@ def regenerate_blockmap(binary: pathlib.Path, blockmap: pathlib.Path) -> None:
         text=True, capture_output=True, check=True,
     ).stdout.strip()
     subprocess.run([builder, "blockmap", "--input", str(binary), "--output", str(blockmap)], check=True)
+
+
+def same_blockmap(first: pathlib.Path, second: pathlib.Path) -> bool:
+    with gzip.open(first, "rb") as first_stream, gzip.open(second, "rb") as second_stream:
+        return first_stream.read() == second_stream.read()
 
 
 def validate_metadata(path: pathlib.Path, assets: pathlib.Path, existing: bool) -> None:
@@ -146,7 +157,8 @@ def publish(args: argparse.Namespace) -> None:
         if missing:
             raise ValueError(f"Missing {args.platform} build assets: {', '.join(sorted(missing))}")
 
-        existing = release_assets(args.tag, args.repo) or set()
+        info = release_info(args.tag, args.repo)
+        existing = info[0] if info else set()
         if required.issubset(existing):
             print(f"{args.platform} assets already published")
             return
@@ -167,25 +179,42 @@ def publish(args: argparse.Namespace) -> None:
             if rebuilt_hash != file_sha512(binary):
                 regenerate_blockmap(binary, staged / f"{name}.blockmap")
 
+        for name in required & existing:
+            if not name.endswith(".blockmap"):
+                continue
+            binary_name = name.removesuffix(".blockmap")
+            if binary_name in existing:
+                continue
+            candidate = staged / f"{name}.candidate"
+            regenerate_blockmap(staged / binary_name, candidate)
+            if not same_blockmap(staged / name, candidate):
+                raise ValueError(f"Existing {name} does not match {binary_name}")
+            candidate.unlink()
+
         if args.platform in METADATA_SUFFIX:
             metadata_name = f"{args.channel}{METADATA_SUFFIX[args.platform]}.yml"
             validate_metadata(staged / metadata_name, staged, metadata_name in existing)
 
-        if not existing and release_assets(args.tag, args.repo) is None:
+        if not existing and release_info(args.tag, args.repo) is None:
             command = ["release", "create", args.tag, "--repo", args.repo, "--verify-tag",
                        "--title", f"Paseo {args.version}", "--notes", release_notes(args)]
             if args.mode != "release":
                 command.append("--prerelease")
             result = gh(*command, check=False)
-            if result.returncode and release_assets(args.tag, args.repo) is None:
+            if result.returncode and release_info(args.tag, args.repo) is None:
                 raise RuntimeError(result.stderr)
 
         # Another platform may have created the release while this one staged files.
-        existing = release_assets(args.tag, args.repo) or set()
+        info = release_info(args.tag, args.repo)
+        existing = info[0] if info else set()
         for file in sorted(staged.iterdir(), key=lambda item: (item.suffix == ".yml", item.name)):
             if file.name not in existing:
                 gh("release", "upload", args.tag, str(file), "--repo", args.repo)
                 print(f"Published {file.name}")
+
+        info = release_info(args.tag, args.repo)
+        if info and info[1] and required.issubset(info[0]):
+            gh("release", "edit", args.tag, "--draft=false", "--repo", args.repo)
 
 
 def main() -> None:

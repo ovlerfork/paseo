@@ -80,6 +80,7 @@ jobs:
       windows_needed: ${{ steps.release_status.outputs.windows_needed }}
       macos_needed: ${{ steps.release_status.outputs.macos_needed }}
       ios_needed: ${{ steps.release_status.outputs.ios_needed }}
+      draft_ready: ${{ steps.release_status.outputs.draft_ready }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
       release_channel: ${{ steps.meta.outputs.release_channel }}
     steps:
@@ -344,6 +345,19 @@ jobs:
           echo "default_tag_exists=${default_tag_exists}" >> "$GITHUB_OUTPUT"
           echo "ubuntu_tag_exists=${ubuntu_tag_exists}" >> "$GITHUB_OUTPUT"
           echo "Source image publish needed for ${PUBLISH_MODE}: ${publish_source_images}"
+
+  publish-ready-draft:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.publish_clients == 'true' && needs.prepare.outputs.draft_ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release with completed client assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: gh release edit "${RELEASE_TAG}" --draft=false --repo "${GITHUB_REPOSITORY}"
 
   publish-source-image:
     if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.clients_only != 'true' && needs.prepare.outputs.publish_source_images == 'true'

@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_FILE="${SCRIPT_FILE:-$(dirname "$0")/../scripts/prepare-release-assets.py}" python3 - <<'PY'
 import argparse
 import base64
+import gzip
 import hashlib
 import importlib.util
 import os
@@ -36,19 +37,22 @@ with tempfile.TemporaryDirectory() as temporary:
     channel = "dev"
     tag = "v0.13-dev.source-abc123"
     release_exists = False
+    release_draft = False
     race_create = True
 
-    def release_assets(_tag, _repo):
-        return {file.name for file in remote.iterdir()} if release_exists else None
+    def release_info(_tag, _repo):
+        return ({file.name for file in remote.iterdir()}, release_draft) if release_exists else None
 
     def gh(*args, check=True):
-        global release_exists, race_create
+        global release_exists, release_draft, race_create
         command = args[:2]
         if command == ("release", "create"):
             release_exists = True
             if race_create:
                 race_create = False
                 return subprocess.CompletedProcess(args, 1, "", "another platform created the release")
+        elif command == ("release", "edit"):
+            release_draft = False
         elif command == ("release", "upload"):
             shutil.copy2(args[3], remote / pathlib.Path(args[3]).name)
         elif command == ("release", "download"):
@@ -66,7 +70,11 @@ with tempfile.TemporaryDirectory() as temporary:
         (generated / name).write_bytes(name.encode())
     (generated / linux_names[-1]).write_text("files:\n  - url: Paseo-x86_64.AppImage\n")
 
-    with patch.object(assets, "release_assets", release_assets), patch.object(assets, "gh", gh):
+    def regenerate_blockmap(binary, blockmap):
+        blockmap.write_bytes(gzip.compress(b"map of " + binary.read_bytes()))
+
+    with patch.object(assets, "release_info", release_info), patch.object(assets, "gh", gh), \
+            patch.object(assets, "regenerate_blockmap", regenerate_blockmap):
         assets.publish(argparse.Namespace(**common, platform="linux", artifacts=generated))
         assert {file.name for file in remote.iterdir()} == set(linux_names)
         metadata = yaml.safe_load((remote / f"{channel}-linux.yml").read_text())
@@ -77,6 +85,10 @@ with tempfile.TemporaryDirectory() as temporary:
         lines = output.read_text().splitlines()
         assert "linux_needed=false" in lines
         assert "windows_needed=true" in lines and "macos_needed=true" in lines and "ios_needed=true" in lines
+        assert "draft_ready=false" in lines
+        release_draft = True
+        assets.status(argparse.Namespace(**common, output=output))
+        assert "draft_ready=true" in output.read_text().splitlines()
 
         # A partial retry uses the published installer and blockmap, while
         # adding the missing architecture and a feed matching both binaries.
@@ -86,16 +98,20 @@ with tempfile.TemporaryDirectory() as temporary:
         old_exe = windows_names[0]
         old_blockmap = old_exe + ".blockmap"
         (remote / old_exe).write_bytes(b"published x64")
-        (remote / old_blockmap).write_bytes(b"published blockmap")
+        (remote / old_blockmap).write_bytes(gzip.compress(b"map of published x64"))
         for name in windows_names[:-1]:
             (windows / name).write_bytes(("rebuilt " + name).encode())
-        (windows / old_blockmap).write_bytes(b"rebuilt blockmap")
+        for name in windows_names:
+            if name.endswith(".blockmap"):
+                binary = windows / name.removesuffix(".blockmap")
+                (windows / name).write_bytes(gzip.compress(b"map of " + binary.read_bytes()))
         (windows / windows_names[-1]).write_text(
             f"files:\n  - url: {windows_names[0]}\n  - url: {windows_names[2]}\n"
         )
         assets.publish(argparse.Namespace(**common, platform="windows", artifacts=windows))
+        assert not release_draft
         assert (remote / old_exe).read_bytes() == b"published x64"
-        assert (remote / old_blockmap).read_bytes() == b"published blockmap"
+        assert gzip.decompress((remote / old_blockmap).read_bytes()) == b"map of published x64"
         metadata = yaml.safe_load((remote / f"{channel}.yml").read_text())
         assert metadata["files"][0]["sha512"] == digest(b"published x64")
         assert metadata["files"][1]["sha512"] == digest(("rebuilt " + windows_names[2]).encode())
@@ -120,10 +136,22 @@ with tempfile.TemporaryDirectory() as temporary:
         # A missing sidecar is regenerated from the effective published binary.
         (remote / old_blockmap).unlink()
         (remote / windows_names[-1]).unlink()
-        with patch.object(assets, "regenerate_blockmap",
-                          side_effect=lambda binary, blockmap: blockmap.write_bytes(b"map of " + binary.read_bytes())):
+        assets.publish(argparse.Namespace(**common, platform="windows", artifacts=windows))
+        assert gzip.decompress((remote / old_blockmap).read_bytes()) == b"map of published x64"
+
+        # A retained blockmap cannot be paired with a newly rebuilt binary.
+        (remote / arm_exe).unlink()
+        (windows / arm_exe).write_bytes(b"different arm64")
+        try:
             assets.publish(argparse.Namespace(**common, platform="windows", artifacts=windows))
-        assert (remote / old_blockmap).read_bytes() == b"map of published x64"
+        except ValueError as error:
+            assert "blockmap" in str(error)
+        else:
+            raise AssertionError("existing blockmap accepted a different installer")
+        assert not (remote / arm_exe).exists()
+        (windows / arm_exe).write_bytes(("rebuilt " + arm_exe).encode())
+        assets.publish(argparse.Namespace(**common, platform="windows", artifacts=windows))
+        assert (remote / arm_exe).is_file()
 
         macos = root / "macos"
         macos.mkdir()
