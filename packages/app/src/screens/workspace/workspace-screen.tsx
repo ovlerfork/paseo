@@ -3867,6 +3867,7 @@ function WorkspaceScreenContent({
         onOpenWorkspaceFile={openMarkdownPath}
         onOpenBrowserUrl={handleOpenUrlInBrowserTab}
         toast={toast}
+        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
       >
         {renderedWorkspaceScreen}
       </WorkspaceMarkdownLinks>

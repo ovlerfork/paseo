@@ -66,6 +66,9 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
       {...copyAnchorProps}
       href={forgeUrl ?? anchorProps.href}
       style={anchorStyle}
+      onAuxClick={(event) => {
+        if (event.button === 1) anchorProps.onClick?.(event);
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
