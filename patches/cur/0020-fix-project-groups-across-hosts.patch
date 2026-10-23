@@ -1,0 +1,699 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 06:21:56 +0000
+Subject: [PATCH] Fix project group edits across host placements
+
+Keep group changes scoped to selected projects and matching host memberships. Retain failed writes in the editor so retries survive partial updates and reconnects without repeating acknowledged writes.
+
+diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
+index 8fa3576f1..a7edf128f 100644
+--- a/packages/app/src/components/project-groups-sheet.test.tsx
++++ b/packages/app/src/components/project-groups-sheet.test.tsx
+@@ -19,6 +19,8 @@ interface AdaptiveModalSheetMockProps {
+ interface AdaptiveTextInputMockProps {
+   initialValue: string;
+   testID?: string;
++  editable?: boolean;
++  onChangeText?: (value: string) => void;
+ }
+ 
+ interface FieldMockProps {
+@@ -43,8 +45,24 @@ function AdaptiveModalSheetMock({ visible, children, footer }: AdaptiveModalShee
+   ) : null;
+ }
+ 
+-function AdaptiveTextInputMock({ initialValue, testID }: AdaptiveTextInputMockProps) {
+-  return <input data-testid={testID} defaultValue={initialValue} />;
++function AdaptiveTextInputMock({
++  initialValue,
++  testID,
++  editable,
++  onChangeText,
++}: AdaptiveTextInputMockProps) {
++  const handleChange = React.useCallback(
++    (event: React.FormEvent<HTMLInputElement>) => onChangeText?.(event.currentTarget.value),
++    [onChangeText],
++  );
++  return (
++    <input
++      data-testid={testID}
++      defaultValue={initialValue}
++      disabled={editable === false}
++      onInput={handleChange}
++    />
++  );
+ }
+ 
+ function ButtonMock({ children, onPress, disabled }: ButtonMockProps) {
+@@ -114,19 +132,37 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
+   AdaptiveTextInput: AdaptiveTextInputMock,
+ }));
+ vi.mock("@/components/ui/button", () => ({ Button: ButtonMock }));
++vi.mock("@/components/ui/press-highlight", () => ({ PressHighlight: PressableMock }));
+ vi.mock("@/components/ui/form-field", () => ({ Field: FieldMock }));
+ vi.mock("@/components/ui/search-field", () => ({ SearchField: SearchFieldMock }));
+ vi.mock("@/utils/confirm-dialog", () => ({ confirmDialog: vi.fn() }));
+-const { setProjectGroup } = vi.hoisted(() => ({ setProjectGroup: vi.fn() }));
++const { setProjectGroup, hostClients } = vi.hoisted(() => ({
++  setProjectGroup: vi.fn(),
++  hostClients: new Map<
++    string,
++    { setProjectGroup: (projectId: string, groupName: string | null) => Promise<void> } | null
++  >(),
++}));
+ 
+ vi.mock("@/runtime/host-runtime", () => ({
+-  getHostRuntimeStore: () => ({ getClient: () => ({ setProjectGroup }) }),
++  getHostRuntimeStore: () => ({
++    getClient: (serverId: string) => hostClients.get(serverId) ?? null,
++    getHosts: () => [
++      { serverId: "host", label: "Local" },
++      { serverId: "remote", label: "Remote" },
++    ],
++  }),
+ }));
+ 
++import { confirmDialog } from "@/utils/confirm-dialog";
+ import { ProjectGroupsSheet } from "./project-groups-sheet";
+ 
+ beforeEach(() => {
+   setProjectGroup.mockReset();
++  hostClients.clear();
++  hostClients.set("host", { setProjectGroup });
++  vi.mocked(confirmDialog).mockReset();
++  vi.mocked(confirmDialog).mockResolvedValue(true);
+   const dom = new JSDOM("<!doctype html><html><body></body></html>");
+   vi.stubGlobal("window", dom.window);
+   vi.stubGlobal("document", dom.window.document);
+@@ -148,6 +184,7 @@ const project = {
+     {
+       serverId: "host",
+       projectId: "project",
++      groupName: null as string | null,
+       iconWorkingDir: "/repo",
+       worktreeSupport: "supported" as const,
+     },
+@@ -193,7 +230,11 @@ it("keeps an in-progress selection when project descriptors update", () => {
+ 
+ it("clears the final membership when saving an existing group", async () => {
+   const onClose = vi.fn();
+-  const groupedProject = { ...project, groupName: "Clients" };
++  const groupedProject = {
++    ...project,
++    groupName: "Clients",
++    hosts: [{ ...project.hosts[0], groupName: "Clients" }],
++  };
+   const view = render(
+     <ProjectGroupsSheet
+       visible
+@@ -212,13 +253,17 @@ it("clears the final membership when saving an existing group", async () => {
+ });
+ 
+ it("keeps selected projects when the editor filters them from view", async () => {
+-  const currentGroupProject = { ...project, groupName: "Clients" };
++  const currentGroupProject = {
++    ...project,
++    groupName: "Clients",
++    hosts: [{ ...project.hosts[0], groupName: "Clients" }],
++  };
+   const otherGroupProject = {
+     ...project,
+     viewKey: "two",
+     projectName: "Other client",
+     groupName: "Other",
+-    hosts: [{ ...project.hosts[0], projectId: "project-two" }],
++    hosts: [{ ...project.hosts[0], projectId: "project-two", groupName: "Other" }],
+   };
+   const view = render(
+     <ProjectGroupsSheet
+@@ -239,3 +284,176 @@ it("keeps selected projects when the editor filters them from view", async () =>
+   fireEvent.click(view.getByText("Save"));
+   await waitFor(() => expect(setProjectGroup).toHaveBeenCalledWith("project-two", "Clients"));
+ });
++
++function connectHost(serverId: string, groups: Map<string, string | null>) {
++  const client = {
++    setProjectGroup: vi.fn(async (projectId: string, groupName: string | null) => {
++      if (!groups.has(projectId)) throw new Error(`Unknown project: ${projectId}`);
++      groups.set(projectId, groupName);
++    }),
++  };
++  hostClients.set(serverId, client);
++  return client;
++}
++
++const multiHostProject = {
++  ...project,
++  hosts: [
++    { ...project.hosts[0], groupName: "Clients" },
++    {
++      ...project.hosts[0],
++      serverId: "remote",
++      projectId: "remote-project",
++      groupName: "Clients",
++    },
++  ],
++};
++
++it("creates a group only for selected host placements and leaves unchecked hosts unchanged", async () => {
++  const localGroups = new Map<string, string | null>([["project", null]]);
++  const remoteGroups = new Map<string, string | null>([["remote-project", null]]);
++  connectHost("host", localGroups);
++  connectHost("remote", remoteGroups);
++  const onClose = vi.fn();
++  const view = render(
++    <ProjectGroupsSheet
++      visible
++      projects={[
++        project,
++        {
++          ...project,
++          viewKey: "unchecked",
++          projectName: "Unchecked",
++          hosts: [{ ...project.hosts[0], serverId: "remote", projectId: "remote-project" }],
++        },
++      ]}
++      capableHosts={new Map([["host", true]])}
++      initialGroupName={null}
++      onClose={onClose}
++    />,
++  );
++  fireEvent.input(view.getByTestId("project-group-name"), { target: { value: "New group" } });
++  fireEvent.click(view.getByTestId("project-group-project-one"));
++  fireEvent.click(view.getByText("Save"));
++  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
++  expect(localGroups.get("project")).toBe("New group");
++  expect(remoteGroups.get("remote-project")).toBeNull();
++});
++
++it("retains a partial rename and retries the failed project on the reconnected host", async () => {
++  const localGroups = new Map<string, string | null>([["project", "Clients"]]);
++  const remoteGroups = new Map<string, string | null>([["remote-project", "Clients"]]);
++  const localClient = connectHost("host", localGroups);
++  hostClients.set("remote", {
++    setProjectGroup: async () => {
++      throw new Error("Connection closed");
++    },
++  });
++  const onClose = vi.fn();
++  const props = {
++    visible: true,
++    capableHosts: new Map([
++      ["host", true],
++      ["remote", true],
++    ]),
++    initialGroupName: "Clients",
++    onClose,
++  };
++  const view = render(<ProjectGroupsSheet {...props} projects={[multiHostProject]} />);
++  expect(view.getByTestId("project-group-project-one").textContent).toContain("✓");
++  fireEvent.input(view.getByTestId("project-group-name"), { target: { value: "Renamed" } });
++  fireEvent.click(view.getByText("Save"));
++  await view.findByText("One (Remote): Connection closed. Retry to finish the change.");
++  expect(localGroups.get("project")).toBe("Renamed");
++  expect(remoteGroups.get("remote-project")).toBe("Clients");
++  expect(onClose).not.toHaveBeenCalled();
++  expect(view.getByDisplayValue("Renamed").getAttribute("disabled")).toBe("");
++  expect(view.getByText("Delete").getAttribute("disabled")).toBe("");
++  expect(view.getByText("Cancel").getAttribute("disabled")).toBeNull();
++  expect(view.getByTestId("project-group-project-one").getAttribute("disabled")).toBe("");
++
++  connectHost("remote", remoteGroups);
++  // A successful host can disappear from the refreshed project list while the failed target remains.
++  view.rerender(
++    <ProjectGroupsSheet
++      {...props}
++      projects={[
++        { ...multiHostProject, hosts: [{ ...multiHostProject.hosts[1], groupName: "Clients" }] },
++      ]}
++    />,
++  );
++  fireEvent.click(view.getByText("Save"));
++  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
++  expect(localGroups.get("project")).toBe("Renamed");
++  expect(remoteGroups.get("remote-project")).toBe("Renamed");
++  expect(localClient.setProjectGroup).toHaveBeenCalledOnce();
++});
++
++it.each(["Save", "Delete"])(
++  "retries a partial %s clearing only placements in the edited group",
++  async (action) => {
++    const localGroups = new Map<string, string | null>([["project", "Clients"]]);
++    const remoteGroups = new Map<string, string | null>([
++      ["remote-project", "Clients"],
++      ["other-project", "Other"],
++    ]);
++    const localClient = connectHost("host", localGroups);
++    hostClients.set("remote", null);
++    const mixedProject = {
++      ...multiHostProject,
++      hosts: [
++        ...multiHostProject.hosts,
++        {
++          ...multiHostProject.hosts[1],
++          serverId: "other",
++          projectId: "other-project",
++          groupName: "Other",
++        },
++      ],
++    };
++    const onClose = vi.fn();
++    const props = {
++      visible: true,
++      capableHosts: new Map([
++        ["host", true],
++        ["remote", true],
++      ]),
++      initialGroupName: "Clients",
++      onClose,
++    };
++    const view = render(<ProjectGroupsSheet {...props} projects={[mixedProject]} />);
++    expect(view.getByTestId("project-group-project-one").textContent).toContain("✓");
++    if (action === "Save") fireEvent.click(view.getByTestId("project-group-project-one"));
++    fireEvent.click(view.getByText(action));
++    await view.findByText("One (Remote): Host is disconnected. Retry to finish the change.");
++    expect(localGroups.get("project")).toBeNull();
++    expect(remoteGroups.get("remote-project")).toBe("Clients");
++    expect(remoteGroups.get("other-project")).toBe("Other");
++    expect(onClose).not.toHaveBeenCalled();
++    expect(view.getByTestId("project-group-project-one").textContent?.includes("✓")).toBe(
++      action === "Delete",
++    );
++    expect(view.getByDisplayValue("Clients").getAttribute("disabled")).toBe("");
++    expect(view.getByText(action === "Save" ? "Delete" : "Save").getAttribute("disabled")).toBe("");
++    expect(view.getByText("Cancel").getAttribute("disabled")).toBeNull();
++
++    connectHost("remote", remoteGroups);
++    view.rerender(
++      <ProjectGroupsSheet
++        {...props}
++        projects={[
++          {
++            ...mixedProject,
++            hosts: [{ ...mixedProject.hosts[0], groupName: null }, ...mixedProject.hosts.slice(1)],
++          },
++        ]}
++      />,
++    );
++    fireEvent.click(view.getByText(action));
++    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
++    expect(localGroups.get("project")).toBeNull();
++    expect(remoteGroups.get("remote-project")).toBeNull();
++    expect(remoteGroups.get("other-project")).toBe("Other");
++    expect(localClient.setProjectGroup).toHaveBeenCalledOnce();
++  },
++);
+diff --git a/packages/app/src/components/project-groups-sheet.tsx b/packages/app/src/components/project-groups-sheet.tsx
+index 3d54e7c6c..b3de5de0d 100644
+--- a/packages/app/src/components/project-groups-sheet.tsx
++++ b/packages/app/src/components/project-groups-sheet.tsx
+@@ -1,5 +1,5 @@
+ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+-import { ScrollView, Text, View, Pressable } from "react-native";
++import { ScrollView, Text, View } from "react-native";
+ import { Check } from "lucide-react-native";
+ import { StyleSheet, withUnistyles } from "react-native-unistyles";
+ import type { Theme } from "@/styles/theme";
+@@ -9,6 +9,7 @@ import {
+   type SheetHeader,
+ } from "@/components/adaptive-modal-sheet";
+ import { Button } from "@/components/ui/button";
++import { PressHighlight } from "@/components/ui/press-highlight";
+ import { Field } from "@/components/ui/form-field";
+ import { SearchField } from "@/components/ui/search-field";
+ import { confirmDialog } from "@/utils/confirm-dialog";
+@@ -26,6 +27,18 @@ export interface ProjectGroupsSheetProps {
+   onClose: () => void;
+ }
+ 
++interface GroupWrite {
++  serverId: string;
++  projectId: string;
++  projectName: string;
++  groupName: string | null;
++}
++
++interface PendingGroupOperation {
++  action: "save" | "delete";
++  targets: GroupWrite[];
++}
++
+ /** Edits one named group at a time; persistence stays with each owning host project. */
+ export function ProjectGroupsSheet({
+   visible,
+@@ -40,7 +53,9 @@ export function ProjectGroupsSheet({
+         initialGroupName === null
+           ? []
+           : projects
+-              .filter((project) => project.groupName === initialGroupName)
++              .filter((project) =>
++                project.hosts.some((host) => host.groupName === initialGroupName),
++              )
+               .map((project) => project.viewKey),
+       ),
+     [initialGroupName, projects],
+@@ -49,6 +64,8 @@ export function ProjectGroupsSheet({
+   const [members, setMembers] = useState(initialMembers);
+   const [error, setError] = useState<string | null>(null);
+   const [saving, setSaving] = useState(false);
++  const [pending, setPending] = useState<PendingGroupOperation | null>(null);
++  const draftLocked = saving || pending !== null;
+   const [search, setSearch] = useState("");
+   const [includeOtherGroups, setIncludeOtherGroups] = useState(false);
+   const initializedEditorKey = useRef<string | null>(null);
+@@ -64,27 +81,39 @@ export function ProjectGroupsSheet({
+     setName(initialGroupName ?? "");
+     setMembers(initialMembers);
+     setError(null);
++    setPending(null);
+     setSearch("");
+     setIncludeOtherGroups(false);
+   }, [initialGroupName, initialMembers, visible]);
+ 
+   const editable = useCallback(
+     (project: SidebarProjectEntry) =>
+-      project.hosts.every((host) => capableHosts.get(host.serverId) === true),
+-    [capableHosts],
++      project.hosts.every(
++        (host) =>
++          (members.has(project.viewKey) && host.groupName !== initialGroupName) ||
++          capableHosts.get(host.serverId) === true,
++      ),
++    [capableHosts, initialGroupName, members],
+   );
+   const selectedProjects = useMemo(
+     () => projects.filter((project) => members.has(project.viewKey)),
+     [members, projects],
+   );
+   const existingMembers = useMemo(
+-    () => projects.filter((project) => project.groupName === initialGroupName),
++    () =>
++      projects.filter(
++        (project) =>
++          initialGroupName !== null &&
++          project.hosts.some((host) => host.groupName === initialGroupName),
++      ),
+     [initialGroupName, projects],
+   );
+   const visibleProjects = useMemo(() => {
+     const normalizedSearch = search.trim().toLocaleLowerCase();
+     return projects.filter((project) => {
+-      const belongsToCurrentGroup = project.groupName === initialGroupName;
++      const belongsToCurrentGroup =
++        initialGroupName !== null &&
++        project.hosts.some((host) => host.groupName === initialGroupName);
+       const isVisibleByGroup =
+         includeOtherGroups ||
+         project.groupName === null ||
+@@ -103,8 +132,8 @@ export function ProjectGroupsSheet({
+     [],
+   );
+   const includeOtherGroupsAccessibilityState = useMemo(
+-    () => ({ checked: includeOtherGroups, disabled: saving }),
+-    [includeOtherGroups, saving],
++    () => ({ checked: includeOtherGroups, disabled: draftLocked }),
++    [draftLocked, includeOtherGroups],
+   );
+   const header = useMemo<SheetHeader>(
+     () => ({ title: initialGroupName ? "Edit project group" : "New project group" }),
+@@ -120,7 +149,50 @@ export function ProjectGroupsSheet({
+     });
+   }, []);
+ 
++  const runOperation = useCallback(
++    async (operation: PendingGroupOperation) => {
++      setSaving(true);
++      setError(null);
++      const failures: GroupWrite[] = [];
++      const messages: string[] = [];
++      const runtime = getHostRuntimeStore();
++      await Promise.all(
++        operation.targets.map(async (target) => {
++          try {
++            if (capableHosts.get(target.serverId) !== true) {
++              throw new Error("Update this host before changing project groups");
++            }
++            const client = runtime.getClient(target.serverId);
++            if (!client) throw new Error("Host is disconnected");
++            await client.setProjectGroup(target.projectId, target.groupName);
++          } catch (cause) {
++            failures.push(target);
++            const serverLabel =
++              runtime.getHosts().find((host) => host.serverId === target.serverId)?.label ??
++              target.serverId;
++            const detail = cause instanceof Error ? cause.message : String(cause);
++            messages.push(`${target.projectName} (${serverLabel}): ${detail}`);
++          }
++        }),
++      );
++      setSaving(false);
++      if (failures.length > 0) {
++        setPending({ action: operation.action, targets: failures });
++        setError(`${messages.join("; ")}. Retry to finish the change.`);
++        return;
++      }
++      setPending(null);
++      onClose();
++    },
++    [capableHosts, onClose],
++  );
++
+   const save = useCallback(async () => {
++    if (saving || pending?.action === "delete") return;
++    if (pending) {
++      await runOperation(pending);
++      return;
++    }
+     const trimmedName = name.trim();
+     if (!trimmedName) {
+       setError("Enter a group name.");
+@@ -130,61 +202,42 @@ export function ProjectGroupsSheet({
+       setError("Select at least one project.");
+       return;
+     }
+-    const changed = new Map<string, string | null>();
+-    for (const project of selectedProjects) changed.set(project.viewKey, trimmedName);
+-    for (const project of existingMembers)
+-      if (!members.has(project.viewKey)) changed.set(project.viewKey, null);
+-    const targets = projects.filter((project) => changed.has(project.viewKey));
+-    if (targets.some((project) => !editable(project))) {
+-      setError("Update every host for the selected projects before changing this group.");
+-      return;
+-    }
+-    setSaving(true);
+-    setError(null);
+-    const failures: string[] = [];
+-    await Promise.all(
+-      targets.flatMap((project) =>
+-        project.hosts.map(async (host) => {
+-          try {
+-            const client = getHostRuntimeStore().getClient(host.serverId);
+-            if (!client) throw new Error("Host is disconnected");
+-            await client.setProjectGroup(host.projectId, changed.get(project.viewKey) ?? null);
+-          } catch {
+-            failures.push(project.projectName);
+-          }
+-        }),
+-      ),
++    const targets: GroupWrite[] = selectedProjects.flatMap((project) =>
++      project.hosts.map((host) => ({
++        serverId: host.serverId,
++        projectId: host.projectId,
++        projectName: project.projectName,
++        groupName: trimmedName,
++      })),
+     );
+-    setSaving(false);
+-    if (failures.length > 0) {
+-      setError(
+-        `Could not update ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
+-      );
+-      return;
++    for (const project of existingMembers) {
++      if (members.has(project.viewKey)) continue;
++      for (const host of project.hosts) {
++        if (host.groupName !== initialGroupName) continue;
++        targets.push({
++          serverId: host.serverId,
++          projectId: host.projectId,
++          projectName: project.projectName,
++          groupName: null,
++        });
++      }
+     }
+-    onClose();
++    await runOperation({ action: "save", targets });
+   }, [
+-    editable,
+     existingMembers,
+     initialGroupName,
+     members,
+     name,
+-    onClose,
+-    projects,
++    pending,
++    runOperation,
++    saving,
+     selectedProjects,
+   ]);
+ 
+   const remove = useCallback(async () => {
+-    if (existingMembers.some((project) => !editable(project))) {
+-      setError("Update every host for this group before deleting it.");
+-      return;
+-    }
+-    if (
+-      existingMembers.some((project) =>
+-        project.hosts.some((host) => getHostRuntimeStore().getClient(host.serverId) === null),
+-      )
+-    ) {
+-      setError("Reconnect every host for this group before deleting it.");
++    if (saving || pending?.action === "save") return;
++    if (pending) {
++      await runOperation(pending);
+       return;
+     }
+     const confirmed = await confirmDialog({
+@@ -195,40 +248,18 @@ export function ProjectGroupsSheet({
+       destructive: true,
+     });
+     if (!confirmed) return;
+-    setMembers(new Set());
+-    setName("");
+-    setSaving(true);
+-    const failures: string[] = [];
+-    await Promise.all(
+-      existingMembers.flatMap((project) =>
+-        project.hosts.map(async (host) => {
+-          try {
+-            const client = getHostRuntimeStore().getClient(host.serverId);
+-            if (!client) throw new Error("Host is disconnected");
+-            await client.setProjectGroup(host.projectId, null);
+-          } catch {
+-            failures.push(project.projectName);
+-          }
+-        }),
+-      ),
+-    );
+-    setSaving(false);
+-    if (failures.length) {
+-      setError(
+-        `Could not delete this group from ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
+-      );
+-      return;
+-    }
+-    onClose();
+-  }, [editable, existingMembers, initialGroupName, onClose]);
+-
+-  const canDelete =
+-    initialGroupName !== null &&
+-    existingMembers.every(
+-      (project) =>
+-        editable(project) &&
+-        project.hosts.every((host) => getHostRuntimeStore().getClient(host.serverId) !== null),
++    const targets: GroupWrite[] = existingMembers.flatMap((project) =>
++      project.hosts
++        .filter((host) => host.groupName === initialGroupName)
++        .map((host) => ({
++          serverId: host.serverId,
++          projectId: host.projectId,
++          projectName: project.projectName,
++          groupName: null,
++        })),
+     );
++    await runOperation({ action: "delete", targets });
++  }, [existingMembers, initialGroupName, pending, runOperation, saving]);
+ 
+   const handleRemove = useCallback(() => {
+     void remove();
+@@ -244,21 +275,27 @@ export function ProjectGroupsSheet({
+             variant="outline"
+             size="md"
+             onPress={handleRemove}
+-            disabled={saving || !canDelete}
++            disabled={saving || pending?.action === "save"}
+           >
+             Delete
+           </Button>
+         ) : null}
+         <View style={styles.footerSpacer} />
+-        <Button variant="secondary" size="md" onPress={onClose} disabled={saving}>
++        <Button variant="secondary" size="md" onPress={onClose}>
+           Cancel
+         </Button>
+-        <Button variant="default" size="md" onPress={handleSave} loading={saving}>
++        <Button
++          variant="default"
++          size="md"
++          onPress={handleSave}
++          loading={saving}
++          disabled={saving || pending?.action === "delete"}
++        >
+           Save
+         </Button>
+       </View>
+     ),
+-    [canDelete, handleRemove, handleSave, initialGroupName, onClose, saving],
++    [handleRemove, handleSave, initialGroupName, onClose, pending, saving],
+   );
+ 
+   return (
+@@ -275,7 +312,7 @@ export function ProjectGroupsSheet({
+           testID="project-group-name"
+           initialValue={name}
+           onChangeText={setName}
+-          editable={!saving}
++          editable={!draftLocked}
+           placeholder="Projects"
+         />
+       </Field>
+@@ -290,11 +327,11 @@ export function ProjectGroupsSheet({
+           testID="project-group-search"
+           clearTestID="project-group-search-clear"
+         />
+-        <Pressable
++        <PressHighlight
+           accessibilityRole="checkbox"
+           accessibilityLabel="Include projects in other groups"
+           accessibilityState={includeOtherGroupsAccessibilityState}
+-          disabled={saving}
++          disabled={draftLocked}
+           onPress={toggleIncludeOtherGroups}
+           style={styles.includeOtherGroups}
+           testID="project-group-include-other-groups"
+@@ -305,7 +342,7 @@ export function ProjectGroupsSheet({
+             ) : null}
+           </View>
+           <Text style={styles.includeOtherGroupsLabel}>Include projects in other groups</Text>
+-        </Pressable>
++        </PressHighlight>
+       </View>
+       <ScrollView style={styles.projects} contentContainerStyle={styles.projectsContent}>
+         {visibleProjects.length > 0 ? (
+@@ -315,7 +352,7 @@ export function ProjectGroupsSheet({
+               project={project}
+               enabled={editable(project)}
+               selected={members.has(project.viewKey)}
+-              saving={saving}
++              saving={draftLocked}
+               onToggle={toggleMember}
+             />
+           ))
+@@ -348,7 +385,7 @@ function ProjectGroupMemberRow({
+     [enabled, saving, selected],
+   );
+   return (
+-    <Pressable
++    <PressHighlight
+       testID={`project-group-project-${project.viewKey}`}
+       accessibilityRole="checkbox"
+       accessibilityState={accessibilityState}
+@@ -362,7 +399,7 @@ function ProjectGroupMemberRow({
+       <Text style={[styles.projectName, !enabled && styles.projectNameDisabled]} numberOfLines={1}>
+         {project.projectName}
+       </Text>
+-    </Pressable>
++    </PressHighlight>
+   );
+ }
+ 
