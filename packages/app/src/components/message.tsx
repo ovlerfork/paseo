@@ -1,5 +1,9 @@
 import { MessagePreview, MessageSender } from "@/components/user-message";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useAssistantFileLinkEnvironment } from "@/assistant-file-links";
+import { useAppSettings } from "@/hooks/use-settings";
+import { isHttpUrl } from "@/utils/http-url";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
@@ -15,7 +19,7 @@ import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mut
 import { TaskListRow } from "@/components/task-list-row";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { isNative, isWeb } from "@/constants/platform";
+import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import { useRevealedText, type MarkdownPhase } from "@/hooks/use-revealed-text";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -1152,6 +1156,20 @@ export const AssistantMessage = memo(function AssistantMessage({
   phase,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
+  const { onOpenUrlInBrowserTab } = useAssistantFileLinkEnvironment();
+  const openMessageLink = useStableEvent((url: string) => {
+    if (
+      isHttpUrl(url) &&
+      settings.messageLinkOpenLocation === "in-app" &&
+      getIsElectron() &&
+      onOpenUrlInBrowserTab
+    ) {
+      onOpenUrlInBrowserTab(url);
+      return;
+    }
+    void openExternalUrl(url);
+  });
   const renderedMessage = useMemo(
     () =>
       renderFullContent ? { text: message, capped: false } : capAssistantMessageForRender(message),
@@ -1198,6 +1216,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     >
       <MarkdownRenderer
         text={revealedMessage}
+        onLinkPress={openMessageLink}
         streaming={phase !== "complete" || revealedMessage.length < renderedMessage.text.length}
         client={client}
         workspaceRoot={workspaceRoot}
