@@ -1,5 +1,12 @@
 import { Text } from "react-native";
-import { forwardRef, useCallback, useMemo, useState, type ComponentProps } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type MouseEvent,
+} from "react";
 import type {
   CodeBlockRendererProps,
   LinkRendererProps,
@@ -43,10 +50,18 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
     }),
     [anchorProps.style, hovered],
   );
+  const onClick = anchorProps.onClick;
+  const handleAuxClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (event.button === 1) onClick?.(event);
+    },
+    [onClick],
+  );
   const anchor = (
     <a
       {...anchorProps}
       style={anchorStyle}
+      onAuxClick={handleAuxClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
