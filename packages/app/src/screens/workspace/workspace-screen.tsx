@@ -3866,6 +3866,7 @@ function WorkspaceScreenContent({
         workspaceRoot={workspaceDirectory ?? undefined}
         onOpenWorkspaceFile={openMarkdownPath}
         onOpenBrowserUrl={handleOpenUrlInBrowserTab}
+        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
         toast={toast}
       >
         {renderedWorkspaceScreen}
