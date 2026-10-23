@@ -2182,7 +2182,17 @@ export const zhCN: TranslationResources = {
       diagnostics: "诊断",
       about: "关于",
     },
-    layout: en.settings.layout,
+    layout: {
+      ...en.settings.layout,
+      openInSidePane: {
+        ...en.settings.layout.openInSidePane,
+        messageLinks: {
+          label: "点击 AI 消息中的链接",
+          external: "系统默认浏览器",
+          inApp: "Paseo 浏览器",
+        },
+      },
+    },
     editor: {
       title: "编辑器",
       vimKeybindings: "Vim 键位",
