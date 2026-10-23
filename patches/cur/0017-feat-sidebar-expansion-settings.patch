@@ -1,103 +1,114 @@
-From 626df13ae0ce5f591f377be21d053cb9ffcd5712 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Sun, 4 Oct 2026 22:07:40 +0000
 Subject: [PATCH] Configure sidebar expansion around task activity
 
 Collapse idle sidebar sections and expand running task branches by default. Preserve manual choices until activity changes, and expose persistent expansion settings from the Workspaces header and new project group context menus.
----
- packages/app/src/components/left-sidebar.tsx  |  50 ++++--
- .../src/components/sidebar-workspace-list.tsx |  15 +-
- .../sidebar/sidebar-expansion-menu.test.tsx   |  51 ++++++
- .../sidebar/sidebar-expansion-menu.tsx        |  63 +++++++
- .../src/components/sidebar/sidebar-model.tsx  |  57 +++++-
- .../sidebar/sidebar-projection.test.ts        |  12 ++
- .../components/sidebar/sidebar-projection.ts  |   7 +-
- ...space-shortcut-targets-subscriber.test.tsx |   9 +
- packages/app/src/i18n/resources/ar.ts         |   1 +
- packages/app/src/i18n/resources/en.ts         |  12 ++
- packages/app/src/i18n/resources/es.ts         |   1 +
- packages/app/src/i18n/resources/fr.ts         |   1 +
- packages/app/src/i18n/resources/ja.ts         |   1 +
- packages/app/src/i18n/resources/ko.ts         |   1 +
- packages/app/src/i18n/resources/pt-BR.ts      |   1 +
- packages/app/src/i18n/resources/ru.ts         |   1 +
- packages/app/src/i18n/resources/zh-CN.ts      |  12 ++
- .../sidebar-collapsed-sections-store/index.ts | 154 +++++++++++++---
- .../state.test.ts                             | 151 ++++++++++------
- .../sidebar-collapsed-sections-store/state.ts | 166 ++++++------------
- 20 files changed, 538 insertions(+), 228 deletions(-)
- create mode 100644 packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
- create mode 100644 packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index aec05a9b..7ad6e2e0 100644
+index 446e99f4d..80d56be74 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -24,2 +24,4 @@ import {
+@@ -34,7 +34,10 @@ import {
+   SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+   SIDEBAR_RESIZE_FAIL_OFFSET,
+ } from "@/components/sidebar-resize-handle-layout";
++import { isNative } from "@/constants/platform";
  import { HostPicker } from "@/components/hosts/host-picker";
 +import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 +import { SidebarExpansionMenuContent } from "@/components/sidebar/sidebar-expansion-menu";
  import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
-@@ -812,24 +814,36 @@ function DesktopSidebar({
+ import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
+ import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
+@@ -841,38 +844,58 @@ function DesktopSidebar({
+ }
+ 
  function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
 +  const { t } = useTranslation();
++  return (
++    <ContextMenu>
++      <ContextMenuTrigger
++        contextOnly={!isNative}
++        accessibilityLabel={t("sidebar.expansion.title")}
++        testID="sidebar-workspaces-expansion-settings"
++      >
++        <SidebarSectionHeader title="Workspaces">
++          {onCreateProjectGroup ? (
++            <CreateProjectGroupButton onPress={onCreateProjectGroup} />
++          ) : null}
++          <Tooltip delayDuration={300}>
++            <TooltipTrigger asChild>
++              <View>
++                <SidebarDisplayPreferencesMenu />
++              </View>
++            </TooltipTrigger>
++            <TooltipContent side="bottom" align="center" offset={8}>
++              <IconTooltipContent label="Display preferences" />
++            </TooltipContent>
++          </Tooltip>
++        </SidebarSectionHeader>
++      </ContextMenuTrigger>
++      <SidebarExpansionMenuContent />
++    </ContextMenu>
++  );
++}
++
++function CreateProjectGroupButton({ onPress }: { onPress: () => void }) {
++  const { t } = useTranslation();
    return (
-     <View style={styles.workspacesSectionHeader}>
--      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
-+      <ContextMenu>
-+        <ContextMenuTrigger
-+          accessibilityLabel={t("sidebar.expansion.title")}
-+          testID="sidebar-workspaces-expansion-settings"
-+        >
-+          <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
-+        </ContextMenuTrigger>
-+        <SidebarExpansionMenuContent />
-+      </ContextMenu>
-       <View style={styles.workspacesSectionActions}>
-         {onCreateProjectGroup ? (
--          <Tooltip delayDuration={300}>
--            <TooltipTrigger asChild>
--              <Pressable
--                accessibilityRole="button"
--                accessibilityLabel="New project group"
--                hitSlop={6}
--                onPress={onCreateProjectGroup}
--                style={styles.workspacesSectionActionButton}
--                testID="sidebar-create-project-group"
--              >
--                <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
--              </Pressable>
--            </TooltipTrigger>
--            <TooltipContent side="bottom" align="center" offset={8}>
--              <IconTooltipContent label="New project group" />
--            </TooltipContent>
--          </Tooltip>
-+          <ContextMenu>
-+            <Tooltip delayDuration={300}>
-+              <TooltipTrigger asChild>
-+                <ContextMenuTrigger
-+                  accessibilityRole="button"
-+                  accessibilityLabel={t("sidebar.expansion.trigger")}
-+                  hitSlop={6}
-+                  onPress={onCreateProjectGroup}
-+                  style={styles.workspacesSectionActionButton}
-+                  testID="sidebar-create-project-group"
-+                >
-+                  <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
-+                </ContextMenuTrigger>
-+              </TooltipTrigger>
-+              <TooltipContent side="bottom" align="center" offset={8}>
-+                <IconTooltipContent label={t("sidebar.expansion.trigger")} />
-+              </TooltipContent>
-+            </Tooltip>
-+            <SidebarExpansionMenuContent />
-+          </ContextMenu>
-         ) : null}
+-    <SidebarSectionHeader title="Workspaces">
+-      {onCreateProjectGroup ? (
+-        <Tooltip delayDuration={300}>
+-          <TooltipTrigger asChild>
+-            <Pressable
+-              accessibilityRole="button"
+-              accessibilityLabel="New project group"
+-              hitSlop={6}
+-              onPress={onCreateProjectGroup}
+-              style={styles.workspacesSectionActionButton}
+-              testID="sidebar-create-project-group"
+-            >
+-              <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
+-            </Pressable>
+-          </TooltipTrigger>
+-          <TooltipContent side="bottom" align="center" offset={8}>
+-            <IconTooltipContent label="New project group" />
+-          </TooltipContent>
+-        </Tooltip>
+-      ) : null}
++    <ContextMenu>
+       <Tooltip delayDuration={300}>
+         <TooltipTrigger asChild>
+-          <View>
+-            <SidebarDisplayPreferencesMenu />
+-          </View>
++          <ContextMenuTrigger
++            accessibilityRole="button"
++            accessibilityLabel={t("sidebar.expansion.trigger")}
++            hitSlop={6}
++            onPress={onPress}
++            style={styles.workspacesSectionActionButton}
++            testID="sidebar-create-project-group"
++          >
++            <ThemedFolderPlus size={14} uniProps={workspaceHeaderIconColor} />
++          </ContextMenuTrigger>
+         </TooltipTrigger>
+         <TooltipContent side="bottom" align="center" offset={8}>
+-          <IconTooltipContent label="Display preferences" />
++          <IconTooltipContent label={t("sidebar.expansion.trigger")} />
+         </TooltipContent>
+       </Tooltip>
+-    </SidebarSectionHeader>
++      <SidebarExpansionMenuContent />
++    </ContextMenu>
+   );
+ }
+ 
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index a9c2f04..6da9831 100644
+index 72c20c060..7c5ff8fa7 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -2527,15 +2527,12 @@ function ProjectModeList({
+@@ -2532,15 +2532,12 @@ function ProjectModeList({
      }
      return counts;
    }, [projects, groupedProjects.groups, workspaceEntriesByKey]);
@@ -121,7 +132,7 @@ index a9c2f04..6da9831 100644
    const canCreateProjectGroup = groupHostIds.some(
 diff --git a/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx b/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
 new file mode 100644
-index 0000000..357c0f3
+index 000000000..357c0f329
 --- /dev/null
 +++ b/packages/app/src/components/sidebar/sidebar-expansion-menu.test.tsx
 @@ -0,0 +1,51 @@
@@ -178,7 +189,7 @@ index 0000000..357c0f3
 +});
 diff --git a/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx b/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
 new file mode 100644
-index 0000000..e544a6a
+index 000000000..e544a6a0b
 --- /dev/null
 +++ b/packages/app/src/components/sidebar/sidebar-expansion-menu.tsx
 @@ -0,0 +1,63 @@
@@ -246,10 +257,11 @@ index 0000000..e544a6a
 +  );
 +}
 diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
-index 9399a3bd..857f5486 100644
+index ec834aee1..ddbd88f81 100644
 --- a/packages/app/src/components/sidebar/sidebar-model.tsx
 +++ b/packages/app/src/components/sidebar/sidebar-model.tsx
-@@ -2,2 +2,9 @@
+@@ -1,5 +1,12 @@
+ import { useTranslation } from "react-i18next";
 -import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 +import React, {
 +  createContext,
@@ -260,29 +272,47 @@ index 9399a3bd..857f5486 100644
 +  type ReactNode,
 +} from "react";
  import {
-@@ -18,2 +25,6 @@ import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
+   useSidebarWorkspacesList,
+   type SidebarProjectEntry,
+@@ -17,6 +24,10 @@ import {
+ import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+ import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
  import { buildSidebarProjection } from "./sidebar-projection";
 +import {
 +  sidebarActivity,
 +  type SidebarExpansionBranch,
 +} from "@/stores/sidebar-collapsed-sections-store/state";
  import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
-@@ -68,2 +79,6 @@ export function SidebarModelProvider({
+ import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
+ import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
+@@ -69,6 +80,10 @@ export function SidebarModelProvider({
+   const collapsedWorkspaceGroupKeys = useSidebarCollapsedSectionsStore(
+     (state) => state.collapsedWorkspaceGroupKeys,
    );
 +  const collapsedProjectGroupNames = useSidebarCollapsedSectionsStore(
 +    (state) => state.collapsedProjectGroupNames,
 +  );
 +  const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
    const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
-@@ -151,2 +166,3 @@ export function SidebarModelProvider({
+   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
+   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
+@@ -158,11 +173,13 @@ export function SidebarModelProvider({
+       groupMode,
+       pinnedCollapsed,
        collapsedProjectKeys,
 +      collapsedProjectGroupNames,
        collapsedWorkspaceGroupKeys,
-@@ -155,2 +171,3 @@ export function SidebarModelProvider({
+       t,
+     }),
+     [
        collapsedProjectKeys,
 +      collapsedProjectGroupNames,
        collapsedWorkspaceGroupKeys,
-@@ -166,2 +183,40 @@ export function SidebarModelProvider({
+       groupMode,
+       list.projectNamesByViewKey,
+@@ -175,6 +192,44 @@ export function SidebarModelProvider({
+     ],
+   );
    const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
 +  const expansionBranches = useMemo(() => {
 +    const activityFor = (keys: Iterable<string>) =>
@@ -323,11 +353,13 @@ index 9399a3bd..857f5486 100644
 +    synchronizeExpansion(expansionBranches);
 +  }, [active, expansionBranches, synchronizeExpansion]);
    const value = useMemo(
+     () => ({
+       ...list,
 diff --git a/packages/app/src/components/sidebar/sidebar-projection.test.ts b/packages/app/src/components/sidebar/sidebar-projection.test.ts
-index 55882a0..da61d4d 100644
+index c2dc31f2e..7cb2bf49d 100644
 --- a/packages/app/src/components/sidebar/sidebar-projection.test.ts
 +++ b/packages/app/src/components/sidebar/sidebar-projection.test.ts
-@@ -151,6 +151,18 @@ describe("buildSidebarProjection", () => {
+@@ -153,6 +153,18 @@ describe("buildSidebarProjection", () => {
      ]);
    });
  
@@ -347,14 +379,20 @@ index 55882a0..da61d4d 100644
      const projection = buildSidebarProjection(projectionInput({ groupMode: "status" }));
  
 diff --git a/packages/app/src/components/sidebar/sidebar-projection.ts b/packages/app/src/components/sidebar/sidebar-projection.ts
-index c67042b4..4e81de85 100644
+index 2e84f02aa..1eef5ce62 100644
 --- a/packages/app/src/components/sidebar/sidebar-projection.ts
 +++ b/packages/app/src/components/sidebar/sidebar-projection.ts
-@@ -46,2 +46,3 @@ export interface SidebarProjectionInput {
+@@ -45,6 +45,7 @@ export interface SidebarProjectionInput {
+   groupMode: SidebarGroupMode;
+   pinnedCollapsed: boolean;
    collapsedProjectKeys: ReadonlySet<string>;
 +  collapsedProjectGroupNames?: ReadonlySet<string>;
    collapsedWorkspaceGroupKeys: ReadonlySet<string>;
-@@ -72,3 +73,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
+   t: TFunction;
+ }
+@@ -72,7 +73,11 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
+     sections.push(
+       ...pinnedGroups.unpinnedProjects.map((project) => ({
          workspaces: project.workspaces,
 -        collapsed: input.collapsedProjectKeys.has(project.viewKey),
 +        collapsed:
@@ -363,8 +401,10 @@ index c67042b4..4e81de85 100644
 +            ? input.collapsedProjectGroupNames?.has(project.groupName) === true
 +            : false),
        })),
+     );
+   } else {
 diff --git a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx b/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
-index 7124fd2..617f9c3 100644
+index 7124fd2f0..617f9c334 100644
 --- a/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
 +++ b/packages/app/src/components/workspace-shortcut-targets-subscriber.test.tsx
 @@ -11,6 +11,7 @@ import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -399,18 +439,24 @@ index 7124fd2..617f9c3 100644
      container?.remove();
      container = null;
 diff --git a/packages/app/src/i18n/resources/ar.ts b/packages/app/src/i18n/resources/ar.ts
-index 96ea4f35..0d155e63 100644
+index 4adf945b6..1a54d086a 100644
 --- a/packages/app/src/i18n/resources/ar.ts
 +++ b/packages/app/src/i18n/resources/ar.ts
-@@ -1127,2 +1127,3 @@ export const ar: TranslationResources = {
+@@ -1198,6 +1198,7 @@ export const ar: TranslationResources = {
+         all: "كل المشاريع",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "لا توجد مساحات عمل مطابقة",
+       description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index e2008f41..6b6f9db3 100644
+index 9bb046003..d905774fb 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -1135,2 +1135,14 @@ export const en = {
+@@ -1206,6 +1206,18 @@ export const en = {
+         all: "All projects",
+       },
      },
 +    expansion: {
 +      title: "Sidebar expansion",
@@ -425,59 +471,87 @@ index e2008f41..6b6f9db3 100644
 +      reset: "Restore defaults",
 +    },
      filterEmpty: {
+       title: "No workspaces match",
+       description: "Change or clear the sidebar filters to see workspaces.",
 diff --git a/packages/app/src/i18n/resources/es.ts b/packages/app/src/i18n/resources/es.ts
-index 0913572a..03b53ff4 100644
+index 9ed1e8557..58a0830ff 100644
 --- a/packages/app/src/i18n/resources/es.ts
 +++ b/packages/app/src/i18n/resources/es.ts
-@@ -1163,2 +1163,3 @@ export const es: TranslationResources = {
+@@ -1234,6 +1234,7 @@ export const es: TranslationResources = {
+         all: "Todos los proyectos",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "Ningún espacio de trabajo coincide",
+       description: "Cambia o borra los filtros de la barra lateral para ver espacios de trabajo.",
 diff --git a/packages/app/src/i18n/resources/fr.ts b/packages/app/src/i18n/resources/fr.ts
-index 31a19e89..1361e036 100644
+index 6563b1100..1f825ca30 100644
 --- a/packages/app/src/i18n/resources/fr.ts
 +++ b/packages/app/src/i18n/resources/fr.ts
-@@ -1162,2 +1162,3 @@ export const fr: TranslationResources = {
+@@ -1226,6 +1226,7 @@ export const fr: TranslationResources = {
+         all: "Tous les projets",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "Aucun espace de travail ne correspond",
+       description:
 diff --git a/packages/app/src/i18n/resources/ja.ts b/packages/app/src/i18n/resources/ja.ts
-index a922c24b..96d6dd7c 100644
+index eb22dd663..15ea097fe 100644
 --- a/packages/app/src/i18n/resources/ja.ts
 +++ b/packages/app/src/i18n/resources/ja.ts
-@@ -1140,2 +1140,3 @@ export const ja: TranslationResources = {
+@@ -1211,6 +1211,7 @@ export const ja: TranslationResources = {
+         all: "すべてのプロジェクト",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "一致するワークスペースがありません",
+       description:
 diff --git a/packages/app/src/i18n/resources/ko.ts b/packages/app/src/i18n/resources/ko.ts
-index 9d01f247..50549780 100644
+index afdb8974e..a02da18fd 100644
 --- a/packages/app/src/i18n/resources/ko.ts
 +++ b/packages/app/src/i18n/resources/ko.ts
-@@ -1134,2 +1134,3 @@ export const ko: TranslationResources = {
+@@ -1205,6 +1205,7 @@ export const ko: TranslationResources = {
+         all: "모든 프로젝트",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "일치하는 워크스페이스가 없습니다",
+       description: "워크스페이스를 보려면 사이드바 필터를 변경하거나 지우세요.",
 diff --git a/packages/app/src/i18n/resources/pt-BR.ts b/packages/app/src/i18n/resources/pt-BR.ts
-index bc562f7c..901569a3 100644
+index f89fb97bf..7a1ec3cda 100644
 --- a/packages/app/src/i18n/resources/pt-BR.ts
 +++ b/packages/app/src/i18n/resources/pt-BR.ts
-@@ -1153,2 +1153,3 @@ export const ptBR: TranslationResources = {
+@@ -1224,6 +1224,7 @@ export const ptBR: TranslationResources = {
+         all: "Todos os projetos",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "Nenhum espaço de trabalho corresponde",
+       description: "Altere ou limpe os filtros da barra lateral para ver espaços de trabalho.",
 diff --git a/packages/app/src/i18n/resources/ru.ts b/packages/app/src/i18n/resources/ru.ts
-index f34ad5a7..1fe4ceb7 100644
+index a1a70822b..36a1c92c3 100644
 --- a/packages/app/src/i18n/resources/ru.ts
 +++ b/packages/app/src/i18n/resources/ru.ts
-@@ -1144,2 +1144,3 @@ export const ru: TranslationResources = {
+@@ -1215,6 +1215,7 @@ export const ru: TranslationResources = {
+         all: "Все проекты",
+       },
      },
 +    expansion: en.sidebar.expansion,
      filterEmpty: {
+       title: "Нет подходящих рабочих пространств",
+       description:
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index b1c56f84..77c68ada 100644
+index ca221d7d3..485dd4849 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -1119,2 +1119,14 @@ export const zhCN: TranslationResources = {
+@@ -1190,6 +1190,18 @@ export const zhCN: TranslationResources = {
+         all: "所有项目",
+       },
      },
 +    expansion: {
 +      title: "侧边栏展开设置",
@@ -492,8 +566,10 @@ index b1c56f84..77c68ada 100644
 +      reset: "恢复默认设置",
 +    },
      filterEmpty: {
+       title: "没有匹配的工作区",
+       description: "更改或清除侧边栏筛选以查看工作区。",
 diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
-index bd24bed..f495eda 100644
+index bd24bed87..f495eda36 100644
 --- a/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
 +++ b/packages/app/src/stores/sidebar-collapsed-sections-store/index.ts
 @@ -1,46 +1,144 @@
@@ -670,7 +746,7 @@ index bd24bed..f495eda 100644
    ),
  );
 diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
-index 6d88dff..6e65e94 100644
+index 6d88dff7c..6e65e945d 100644
 --- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
 +++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.test.ts
 @@ -1,74 +1,111 @@
@@ -843,7 +919,7 @@ index 6d88dff..6e65e94 100644
    });
  });
 diff --git a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
-index cf92e60..1978cfc 100644
+index cf92e600b..1978cfc75 100644
 --- a/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
 +++ b/packages/app/src/stores/sidebar-collapsed-sections-store/state.ts
 @@ -1,128 +1,66 @@
@@ -1027,6 +1103,3 @@ index cf92e60..1978cfc 100644
 -  return true;
 +  return next;
  }
--- 
-2.43.0
-
