@@ -80,6 +80,24 @@ describe("loadAppSettingsFromStorage", () => {
     expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
   });
 
+  it("defaults message links to the system browser for existing settings and saves a new choice", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ serviceUrlBehavior: "in-app" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(deps)).messageLinkOpenLocation).toBe("external");
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: { messageLinkOpenLocation: "in-app" },
+      deps,
+    });
+    expect(await loadAppSettingsFromStorage(deps)).toMatchObject({
+      messageLinkOpenLocation: "in-app",
+      serviceUrlBehavior: "in-app",
+    });
+  });
+
   it("keeps valid settings when another build wrote unknown fields or enum values", async () => {
     const stored = {
       theme: "dark",
