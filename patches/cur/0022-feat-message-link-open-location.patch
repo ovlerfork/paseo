@@ -8,16 +8,14 @@ diff --git a/packages/app/src/assistant-file-links/provider.tsx b/packages/app/s
 index 967e1c32e..43219cc4e 100644
 --- a/packages/app/src/assistant-file-links/provider.tsx
 +++ b/packages/app/src/assistant-file-links/provider.tsx
-@@ -24,6 +24,7 @@ export interface AssistantFileLinkResolverConfig {
-   workspaceRoot?: string;
+@@ -25,5 +25,6 @@ export interface AssistantFileLinkResolverConfig {
    onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
    toast?: ToastApi | null;
 +  onOpenUrlInBrowserTab?: (url: string) => void;
  }
  
  export interface AssistantFileLinkResolverProviderProps extends AssistantFileLinkResolverConfig {
-@@ -44,8 +45,10 @@ export function AssistantFileLinkResolverProvider({
-   workspaceRoot,
+@@ -45,7 +46,9 @@ export function AssistantFileLinkResolverProvider({
    onOpenWorkspaceFile,
    toast,
 +  onOpenUrlInBrowserTab,
@@ -156,22 +154,18 @@ diff --git a/packages/app/src/hooks/use-settings/storage.ts b/packages/app/src/h
 index 54ee6b10b..d2c5c5851 100644
 --- a/packages/app/src/hooks/use-settings/storage.ts
 +++ b/packages/app/src/hooks/use-settings/storage.ts
-@@ -80,6 +80,7 @@ export interface AppSettings {
+@@ -80,4 +80,5 @@ export interface AppSettings {
    language: AppLanguage;
    sendBehavior: SendBehavior;
    serviceUrlBehavior: ServiceUrlBehavior;
 +  messageLinkOpenLocation: "external" | "in-app";
    terminalScrollbackLines: number;
-   useLegacyTerminalRenderer: boolean;
-   uiFontFamily: string; // "" = platform default UI stack
-@@ -140,6 +141,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+@@ -140,4 +141,5 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
    language: "system",
    sendBehavior: "steer",
    serviceUrlBehavior: "ask",
 +  messageLinkOpenLocation: "external",
    terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
-   useLegacyTerminalRenderer: false,
-   uiFontFamily: "",
 @@ -218,6 +220,7 @@ const StoredAppSettingsSchema = z
        .catch("system"),
      sendBehavior: z.enum(["interrupt", "steer", "queue"]).catch("steer"),
