@@ -76,7 +76,10 @@ jobs:
       publish_clients: ${{ steps.upstream_ref.outputs.publish_clients }}
       publish_source_images: ${{ steps.source_image_status.outputs.publish_source_images || 'true' }}
       publish: ${{ steps.publish.outputs.value }}
-      release_needed: ${{ steps.release_status.outputs.needed }}
+      linux_needed: ${{ steps.release_status.outputs.linux_needed }}
+      windows_needed: ${{ steps.release_status.outputs.windows_needed }}
+      macos_needed: ${{ steps.release_status.outputs.macos_needed }}
+      ios_needed: ${{ steps.release_status.outputs.ios_needed }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
       release_channel: ${{ steps.meta.outputs.release_channel }}
     steps:
@@ -289,6 +292,7 @@ jobs:
 
       - name: Check fork release status
         id: release_status
+        if: steps.publish.outputs.value == 'true' && steps.upstream_ref.outputs.publish_clients == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
@@ -296,27 +300,9 @@ jobs:
           RELEASE_CHANNEL: ${{ steps.meta.outputs.release_channel }}
         run: |
           set -euo pipefail
-          needed=true
-          if assets="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' 2>/dev/null)"; then
-            if grep -Fxq "Paseo-Setup-${VERSION}-x64.exe" <<<"${assets}" \
-              && grep -Fxq "Paseo-Setup-${VERSION}-x64.zip" <<<"${assets}" \
-              && grep -Fxq "Paseo-Setup-${VERSION}-arm64.exe" <<<"${assets}" \
-              && grep -Fxq "Paseo-Setup-${VERSION}-arm64.zip" <<<"${assets}" \
-              && grep -Fxq "${RELEASE_CHANNEL}.yml" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-arm64.dmg" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-arm64.zip" <<<"${assets}" \
-              && grep -Fxq "${RELEASE_CHANNEL}-mac.yml" <<<"${assets}" \
-              && grep -Fxq "Paseo-x86_64.AppImage" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-amd64.deb" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-x86_64.rpm" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-x64.tar.gz" <<<"${assets}" \
-              && grep -Fxq "${RELEASE_CHANNEL}-linux.yml" <<<"${assets}" \
-              && grep -Fxq "Paseo-${VERSION}-ios-unsigned.ipa" <<<"${assets}"; then
-              needed=false
-            fi
-          fi
-          echo "needed=${needed}" >> "$GITHUB_OUTPUT"
-          echo "Fork release ${RELEASE_TAG} needs client assets: ${needed}"
+          python3 patchset/scripts/prepare-release-assets.py status \
+            --tag "${RELEASE_TAG}" --version "${VERSION}" \
+            --channel "${RELEASE_CHANNEL}" --output "$GITHUB_OUTPUT"
 
       - name: Check source image status
         id: source_image_status
@@ -576,10 +562,10 @@ jobs:
 
   build-linux:
     needs: prepare
-    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.linux_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: ubuntu-22.04
     permissions:
-      contents: read
+      contents: write
     defaults:
       run:
         working-directory: source
@@ -636,12 +622,53 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Checkout release asset policy
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patchset_sha }}
+          path: release-policy
+
+      - name: Setup release Python
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release asset dependency
+        if: needs.prepare.outputs.publish == 'true'
+        run: python -m pip install --disable-pip-version-check "PyYAML==6.0.2"
+
+      - name: Publish linux client assets
+        if: needs.prepare.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
+          CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          python ../release-policy/scripts/prepare-release-assets.py publish \
+            --platform linux --artifacts packages/desktop/release \
+            --tag "${RELEASE_TAG}" --version "${VERSION}" \
+            --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
+            --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
+            --owner "${IMAGE_OWNER}" "${args[@]}"
+
   build-windows:
     needs: prepare
-    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.windows_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     defaults:
       run:
         working-directory: source
@@ -696,12 +723,53 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Checkout release asset policy
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patchset_sha }}
+          path: release-policy
+
+      - name: Setup release Python
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release asset dependency
+        if: needs.prepare.outputs.publish == 'true'
+        run: python -m pip install --disable-pip-version-check "PyYAML==6.0.2"
+
+      - name: Publish windows client assets
+        if: needs.prepare.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
+          CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          python ../release-policy/scripts/prepare-release-assets.py publish \
+            --platform windows --artifacts packages/desktop/release \
+            --tag "${RELEASE_TAG}" --version "${VERSION}" \
+            --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
+            --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
+            --owner "${IMAGE_OWNER}" "${args[@]}"
+
   build-macos:
     needs: prepare
-    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.macos_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: macos-14
     permissions:
-      contents: read
+      contents: write
     defaults:
       run:
         working-directory: source
@@ -890,12 +958,53 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Checkout release asset policy
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.patchset_sha }}
+          path: release-policy
+
+      - name: Setup release Python
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release asset dependency
+        if: needs.prepare.outputs.publish == 'true'
+        run: python -m pip install --disable-pip-version-check "PyYAML==6.0.2"
+
+      - name: Publish macos client assets
+        if: needs.prepare.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
+          CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          python ../release-policy/scripts/prepare-release-assets.py publish \
+            --platform macos --artifacts packages/desktop/release \
+            --tag "${RELEASE_TAG}" --version "${VERSION}" \
+            --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
+            --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
+            --owner "${IMAGE_OWNER}" "${args[@]}"
+
   build-ios:
     needs: prepare
-    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.release_needed == 'true' || needs.prepare.outputs.publish == 'false')
+    if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.ios_needed == 'true' || needs.prepare.outputs.publish == 'false')
     runs-on: ${{ needs.prepare.outputs.publish_mode == 'release' && 'macos-14' || 'macos-15' }}
     permissions:
-      contents: read
+      contents: write
     defaults:
       run:
         working-directory: source
@@ -976,82 +1085,39 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  publish-release:
-    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]
-    if: >
-      always() &&
-      needs.prepare.outputs.publish == 'true' &&
-      needs.prepare.outputs.publish_clients == 'true' &&
-      needs.prepare.outputs.release_needed == 'true' &&
-      (needs.publish-source-image.result == 'success' || needs.publish-source-image.result == 'skipped') &&
-      needs.build-linux.result == 'success' &&
-      needs.build-windows.result == 'success' &&
-      needs.build-macos.result == 'success' &&
-      needs.build-ios.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: read
-    steps:
-      - name: Download client artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          path: artifacts
-
-      - name: Checkout release asset preparation
+      - name: Checkout release asset policy
+        if: needs.prepare.outputs.publish == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.patchset_sha }}
           path: release-policy
-          fetch-depth: 0
 
-      - name: Setup Python
+      - name: Setup release Python
+        if: needs.prepare.outputs.publish == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install release asset dependency
-        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"
-
-      - name: Prepare release assets
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
-        run: >
-          python3 release-policy/scripts/prepare-release-assets.py
-          --artifacts artifacts
-          --output release-assets
-          --version "${VERSION}"
-          --channel "${RELEASE_CHANNEL}"
-
-      - name: Publish fork GitHub Release
+      - name: Publish ios client assets
+        if: needs.prepare.outputs.publish == 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
           RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           IMAGE_OWNER: ${{ needs.prepare.outputs.owner }}
           CLIENTS_ONLY: ${{ needs.prepare.outputs.clients_only }}
         run: |
           set -euo pipefail
-          tag="${{ needs.prepare.outputs.release_tag }}"
-          prerelease_flag=()
-          image_tag="${VERSION}-${SOURCE_SHA}"
-          if [[ "${PUBLISH_MODE}" == "dev" ]]; then
-            image_tag="dev-${UPSTREAM_SHA}-source-${SOURCE_SHA}"
-          fi
-          if [[ "${PUBLISH_MODE}" != "release" ]]; then
-            prerelease_flag=(--prerelease)
-          fi
-          notes="$(printf 'Built from upstream %s with patch source %s.\n\nGHCR: ghcr.io/%s/paseo:%s' "${UPSTREAM_SHA}" "${SOURCE_SHA}" "${IMAGE_OWNER}" "${image_tag}")"
-          if [[ "${CLIENTS_ONLY}" == "true" ]]; then
-            notes="$(printf 'Built from upstream %s with patch source %s.' "${UPSTREAM_SHA}" "${SOURCE_SHA}")"
-          fi
-          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${tag}" release-assets/* --clobber --repo "${GITHUB_REPOSITORY}"
-          else
-            gh release create "${tag}" release-assets/* --repo "${GITHUB_REPOSITORY}" --title "Paseo ${VERSION}" --notes "${notes}" "${prerelease_flag[@]}"
-          fi
+          args=()
+          if [[ "${CLIENTS_ONLY}" == "true" ]]; then args+=(--clients-only); fi
+          python ../release-policy/scripts/prepare-release-assets.py publish \
+            --platform ios --artifacts . \
+            --tag "${RELEASE_TAG}" --version "${VERSION}" \
+            --channel "${RELEASE_CHANNEL}" --mode "${PUBLISH_MODE}" \
+            --upstream-sha "${UPSTREAM_SHA}" --source-sha "${SOURCE_SHA}" \
+            --owner "${IMAGE_OWNER}" "${args[@]}"

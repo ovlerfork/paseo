@@ -175,16 +175,6 @@ assert_job_not_contains '          path: source/policy'
 assert_job_not_contains '          context: .'
 
 printf 'auto docker publish checkout layout test passed\n'
-release_job="$(sed -n '/^  publish-release:/,$p' "${workflow_file}")"
-
-assert_release_contains() {
-  local expected="$1"
-  if ! grep -Fqx "${expected}" <<<"${release_job}"; then
-    printf 'release workflow is missing: %s\n' "${expected}" >&2
-    exit 1
-  fi
-}
-
 assert_prepare_contains '      release_tag: ${{ steps.meta.outputs.release_tag }}'
 assert_prepare_contains '          release_tag="v${version}-source-${source_sha}"'
 assert_prepare_contains '            release_tag="v${version}+source.${source_sha}"'
@@ -196,8 +186,11 @@ assert_prepare_contains '      - name: Create immutable release source tag'
 assert_prepare_contains "        if: steps.publish.outputs.value == 'false'"
 assert_prepare_contains '          name: patched-source'
 assert_prepare_contains '          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}'
-assert_prepare_contains '            if grep -Fxq "Paseo-Setup-${VERSION}-x64.exe" <<<"${assets}" \'
-assert_prepare_contains '              && grep -Fxq "Paseo-${VERSION}-x64.tar.gz" <<<"${assets}" \'
+assert_prepare_contains '      linux_needed: ${{ steps.release_status.outputs.linux_needed }}'
+assert_prepare_contains '      windows_needed: ${{ steps.release_status.outputs.windows_needed }}'
+assert_prepare_contains '      macos_needed: ${{ steps.release_status.outputs.macos_needed }}'
+assert_prepare_contains '      ios_needed: ${{ steps.release_status.outputs.ios_needed }}'
+assert_prepare_contains '          python3 patchset/scripts/prepare-release-assets.py status \'
 if [[ -f "$(dirname "${workflow_file}")/auto-desktop-build.yml" ]]; then
   printf 'desktop builds must run from the release workflow, not a separate source preparation workflow\n' >&2
   exit 1
@@ -231,19 +224,19 @@ job_condition() {
   ' "${workflow_file}"
 }
 
-for job in build-linux build-windows build-macos build-ios; do
-  condition="$(job_condition "${job}")"
+for platform in linux windows macos ios; do
+  condition="$(job_condition "build-${platform}")"
   for requirement in \
-    "needs.prepare.outputs.release_needed == 'true'" \
+    "needs.prepare.outputs.${platform}_needed == 'true'" \
     "needs.prepare.outputs.publish == 'false'"; do
     if [[ "${condition}" != *"${requirement}"* ]]; then
-      printf '%s must build clients when release assets are needed: missing %s\n' "${job}" "${requirement}" >&2
+      printf '%s must build when its own assets are incomplete: missing %s\n' "${platform}" "${requirement}" >&2
       exit 1
     fi
   done
 done
 macos_job="$(sed -n '/^  build-macos:/,/^  build-ios:/p' "${workflow_file}")"
-ios_job="$(sed -n '/^  build-ios:/,/^  publish-release:/p' "${workflow_file}")"
+ios_job="$(sed -n '/^  build-ios:/,$p' "${workflow_file}")"
 if ! grep -Fqx '          NODE_OPTIONS: --max-old-space-size=4096' <<<"${macos_job}"; then
   printf 'macOS desktop build must raise the observed V8 old-space ceiling\n' >&2
   exit 1
@@ -264,17 +257,17 @@ assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Devel
 assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer' \
   "$(PUBLISH_MODE=prerelease bash -c "${xcode_selection_script}")" 'prerelease iOS Xcode selection'
 
-assert_release_contains "    needs: [prepare, publish-source-image, build-linux, build-windows, build-macos, build-ios]"
-assert_release_contains '          path: release-policy'
-assert_release_contains '        run: python3 -m pip install --disable-pip-version-check "PyYAML==6.0.2"'
-assert_release_contains '          --channel "${RELEASE_CHANNEL}"'
-assert_release_contains '          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}'
-assert_release_contains '          image_tag="${VERSION}-${SOURCE_SHA}"'
-assert_release_contains '          if [[ "${PUBLISH_MODE}" == "dev" ]]; then'
-assert_release_contains '            image_tag="dev-${UPSTREAM_SHA}-source-${SOURCE_SHA}"'
-assert_release_contains '          if [[ "${PUBLISH_MODE}" != "release" ]]; then'
-if ! grep -Fq 'ghcr.io/%s/paseo:%s' <<<"${release_job}"; then
-  printf 'release notes must identify the matching immutable GHCR image\n' >&2
+for platform in linux windows macos ios; do
+  job_body="$(sed -n "/^  build-${platform}:/,/^  build-[a-z]*:/p" "${workflow_file}")"
+  if ! grep -Fqx '      contents: write' <<<"${job_body}" \
+    || ! grep -Fqx "      - name: Publish ${platform} client assets" <<<"${job_body}" \
+    || ! grep -Fq -- "--platform ${platform} --artifacts" <<<"${job_body}"; then
+    printf '%s must publish its own assets after its build\n' "${platform}" >&2
+    exit 1
+  fi
+done
+if grep -Fq '  publish-release:' "${workflow_file}"; then
+  printf 'release publication must not wait for all client build jobs\n' >&2
   exit 1
 fi
 
@@ -340,7 +333,7 @@ done
 printf 'client release channel scheduling and build metadata tests passed\n'
 
 # Docker polling must not occupy the hourly client lanes or publish their assets.
-for job in build-linux build-windows build-macos build-ios publish-release; do
+for job in build-linux build-windows build-macos build-ios; do
   condition="$(job_condition "${job}")"
   if [[ "${condition}" != *"needs.prepare.outputs.publish_clients == 'true'"* ]]; then
     printf '%s must only run when client publishing is enabled\n' "${job}" >&2
