@@ -6,10 +6,16 @@ Subject: [PATCH] Fix project group edits across host placements
 Keep group changes scoped to selected projects and matching host memberships. Retain failed writes in the editor so retries survive partial updates and reconnects without repeating acknowledged writes.
 
 diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
-index 8fa3576f1..a7edf128f 100644
+index 8fa3576f1..c611359f0 100644
 --- a/packages/app/src/components/project-groups-sheet.test.tsx
 +++ b/packages/app/src/components/project-groups-sheet.test.tsx
-@@ -19,6 +19,8 @@ interface AdaptiveModalSheetMockProps {
+@@ -14,11 +14,14 @@ interface AdaptiveModalSheetMockProps {
+   visible: boolean;
+   children?: React.ReactNode;
+   footer?: React.ReactNode;
++  onClose: () => void;
+ }
+ 
  interface AdaptiveTextInputMockProps {
    initialValue: string;
    testID?: string;
@@ -18,7 +24,25 @@ index 8fa3576f1..a7edf128f 100644
  }
  
  interface FieldMockProps {
-@@ -43,8 +45,24 @@ function AdaptiveModalSheetMock({ visible, children, footer }: AdaptiveModalShee
+@@ -34,17 +37,41 @@ function PressableMock({ children, onPress, disabled, testID }: ButtonMockProps)
+   );
+ }
+ 
+-function AdaptiveModalSheetMock({ visible, children, footer }: AdaptiveModalSheetMockProps) {
++function AdaptiveModalSheetMock({
++  visible,
++  children,
++  footer,
++  onClose,
++}: AdaptiveModalSheetMockProps) {
+   return visible ? (
+     <div>
+       {children}
+       {footer}
++      <button type="button" data-testid="project-group-dismiss" onClick={onClose}>
++        Dismiss
++      </button>
+     </div>
    ) : null;
  }
  
@@ -45,7 +69,7 @@ index 8fa3576f1..a7edf128f 100644
  }
  
  function ButtonMock({ children, onPress, disabled }: ButtonMockProps) {
-@@ -114,19 +132,37 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
+@@ -114,19 +141,37 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
    AdaptiveTextInput: AdaptiveTextInputMock,
  }));
  vi.mock("@/components/ui/button", () => ({ Button: ButtonMock }));
@@ -85,7 +109,7 @@ index 8fa3576f1..a7edf128f 100644
    const dom = new JSDOM("<!doctype html><html><body></body></html>");
    vi.stubGlobal("window", dom.window);
    vi.stubGlobal("document", dom.window.document);
-@@ -148,6 +184,7 @@ const project = {
+@@ -148,6 +193,7 @@ const project = {
      {
        serverId: "host",
        projectId: "project",
@@ -93,7 +117,7 @@ index 8fa3576f1..a7edf128f 100644
        iconWorkingDir: "/repo",
        worktreeSupport: "supported" as const,
      },
-@@ -193,7 +230,11 @@ it("keeps an in-progress selection when project descriptors update", () => {
+@@ -193,7 +239,11 @@ it("keeps an in-progress selection when project descriptors update", () => {
  
  it("clears the final membership when saving an existing group", async () => {
    const onClose = vi.fn();
@@ -106,7 +130,7 @@ index 8fa3576f1..a7edf128f 100644
    const view = render(
      <ProjectGroupsSheet
        visible
-@@ -212,13 +253,17 @@ it("clears the final membership when saving an existing group", async () => {
+@@ -212,13 +262,17 @@ it("clears the final membership when saving an existing group", async () => {
  });
  
  it("keeps selected projects when the editor filters them from view", async () => {
@@ -126,7 +150,7 @@ index 8fa3576f1..a7edf128f 100644
    };
    const view = render(
      <ProjectGroupsSheet
-@@ -239,3 +284,176 @@ it("keeps selected projects when the editor filters them from view", async () =>
+@@ -239,3 +293,210 @@ it("keeps selected projects when the editor filters them from view", async () =>
    fireEvent.click(view.getByText("Save"));
    await waitFor(() => expect(setProjectGroup).toHaveBeenCalledWith("project-two", "Clients"));
  });
@@ -303,8 +327,42 @@ index 8fa3576f1..a7edf128f 100644
 +    expect(localClient.setProjectGroup).toHaveBeenCalledOnce();
 +  },
 +);
++
++it("blocks closing during an active write and allows Cancel after the write fails", async () => {
++  let rejectWrite!: (reason: Error) => void;
++  const write = new Promise<void>((_resolve, reject) => {
++    rejectWrite = reject;
++  });
++  setProjectGroup.mockReturnValue(write);
++  const onClose = vi.fn();
++  const view = render(
++    <ProjectGroupsSheet
++      visible
++      projects={[multiHostProject]}
++      capableHosts={
++        new Map([
++          ["host", true],
++          ["remote", true],
++        ])
++      }
++      initialGroupName="Clients"
++      onClose={onClose}
++    />,
++  );
++  fireEvent.click(view.getByText("Save"));
++  expect(view.getByText("Cancel").getAttribute("disabled")).toBe("");
++  fireEvent.click(view.getByText("Cancel"));
++  fireEvent.click(view.getByTestId("project-group-dismiss"));
++  expect(onClose).not.toHaveBeenCalled();
++
++  rejectWrite(new Error("Connection closed"));
++  await view.findByText(/One \(Local\): Connection closed.*Retry to finish the change\./);
++  expect(view.getByText("Cancel").getAttribute("disabled")).toBeNull();
++  fireEvent.click(view.getByText("Cancel"));
++  expect(onClose).toHaveBeenCalledOnce();
++});
 diff --git a/packages/app/src/components/project-groups-sheet.tsx b/packages/app/src/components/project-groups-sheet.tsx
-index 3d54e7c6c..b3de5de0d 100644
+index 3d54e7c6c..64ca51527 100644
 --- a/packages/app/src/components/project-groups-sheet.tsx
 +++ b/packages/app/src/components/project-groups-sheet.tsx
 @@ -1,5 +1,5 @@
@@ -606,7 +664,17 @@ index 3d54e7c6c..b3de5de0d 100644
  
    const handleRemove = useCallback(() => {
      void remove();
-@@ -244,21 +275,27 @@ export function ProjectGroupsSheet({
+@@ -236,6 +267,9 @@ export function ProjectGroupsSheet({
+   const handleSave = useCallback(() => {
+     void save();
+   }, [save]);
++  const handleClose = useCallback(() => {
++    if (!saving) onClose();
++  }, [onClose, saving]);
+   const footer = useMemo(
+     () => (
+       <View style={styles.footer}>
+@@ -244,27 +278,33 @@ export function ProjectGroupsSheet({
              variant="outline"
              size="md"
              onPress={handleRemove}
@@ -618,7 +686,7 @@ index 3d54e7c6c..b3de5de0d 100644
          ) : null}
          <View style={styles.footerSpacer} />
 -        <Button variant="secondary" size="md" onPress={onClose} disabled={saving}>
-+        <Button variant="secondary" size="md" onPress={onClose}>
++        <Button variant="secondary" size="md" onPress={handleClose} disabled={saving}>
            Cancel
          </Button>
 -        <Button variant="default" size="md" onPress={handleSave} loading={saving}>
@@ -634,11 +702,18 @@ index 3d54e7c6c..b3de5de0d 100644
        </View>
      ),
 -    [canDelete, handleRemove, handleSave, initialGroupName, onClose, saving],
-+    [handleRemove, handleSave, initialGroupName, onClose, pending, saving],
++    [handleClose, handleRemove, handleSave, initialGroupName, pending, saving],
    );
  
    return (
-@@ -275,7 +312,7 @@ export function ProjectGroupsSheet({
+     <AdaptiveModalSheet
+       visible={visible}
+-      onClose={onClose}
++      onClose={handleClose}
+       header={header}
+       footer={footer}
+       desktopMaxWidth={440}
+@@ -275,7 +315,7 @@ export function ProjectGroupsSheet({
            testID="project-group-name"
            initialValue={name}
            onChangeText={setName}
@@ -647,7 +722,7 @@ index 3d54e7c6c..b3de5de0d 100644
            placeholder="Projects"
          />
        </Field>
-@@ -290,11 +327,11 @@ export function ProjectGroupsSheet({
+@@ -290,11 +330,11 @@ export function ProjectGroupsSheet({
            testID="project-group-search"
            clearTestID="project-group-search-clear"
          />
@@ -661,7 +736,7 @@ index 3d54e7c6c..b3de5de0d 100644
            onPress={toggleIncludeOtherGroups}
            style={styles.includeOtherGroups}
            testID="project-group-include-other-groups"
-@@ -305,7 +342,7 @@ export function ProjectGroupsSheet({
+@@ -305,7 +345,7 @@ export function ProjectGroupsSheet({
              ) : null}
            </View>
            <Text style={styles.includeOtherGroupsLabel}>Include projects in other groups</Text>
@@ -670,7 +745,7 @@ index 3d54e7c6c..b3de5de0d 100644
        </View>
        <ScrollView style={styles.projects} contentContainerStyle={styles.projectsContent}>
          {visibleProjects.length > 0 ? (
-@@ -315,7 +352,7 @@ export function ProjectGroupsSheet({
+@@ -315,7 +355,7 @@ export function ProjectGroupsSheet({
                project={project}
                enabled={editable(project)}
                selected={members.has(project.viewKey)}
@@ -679,7 +754,7 @@ index 3d54e7c6c..b3de5de0d 100644
                onToggle={toggleMember}
              />
            ))
-@@ -348,7 +385,7 @@ function ProjectGroupMemberRow({
+@@ -348,7 +388,7 @@ function ProjectGroupMemberRow({
      [enabled, saving, selected],
    );
    return (
@@ -688,7 +763,7 @@ index 3d54e7c6c..b3de5de0d 100644
        testID={`project-group-project-${project.viewKey}`}
        accessibilityRole="checkbox"
        accessibilityState={accessibilityState}
-@@ -362,7 +399,7 @@ function ProjectGroupMemberRow({
+@@ -362,7 +402,7 @@ function ProjectGroupMemberRow({
        <Text style={[styles.projectName, !enabled && styles.projectNameDisabled]} numberOfLines={1}>
          {project.projectName}
        </Text>
