@@ -266,6 +266,28 @@ for platform in linux windows macos ios; do
     printf '%s must publish its own assets after its build\n' "${platform}" >&2
     exit 1
   fi
+  publish_script="$(awk -v platform="${platform}" '
+    $0 == "      - name: Publish " platform " client assets" { in_step = 1; next }
+    in_step && $0 == "        run: |" { in_run = 1; next }
+    in_run && /^          / { sub(/^          /, ""); print; next }
+    in_run { exit }
+  ' "${workflow_file}")"
+  python() { printf '%s\n' "$@"; }
+  export -f python
+  for clients_only in false true; do
+    invocation="$(CLIENTS_ONLY="${clients_only}" RELEASE_TAG=test VERSION=0.13.0 \
+      RELEASE_CHANNEL=dev PUBLISH_MODE=dev UPSTREAM_SHA=upstream SOURCE_SHA=source \
+      IMAGE_OWNER=example bash -c "${publish_script}")"
+    if [[ "${invocation}" != *"--platform"$'\n'"${platform}"* ]]; then
+      printf '%s publishing did not invoke its platform helper\n' "${platform}" >&2
+      exit 1
+    fi
+    if [[ "${clients_only}" == true && "${invocation}" != *"--clients-only"* ]] \
+      || [[ "${clients_only}" == false && "${invocation}" == *"--clients-only"* ]]; then
+      printf '%s publishing has incorrect clients-only flag for %s\n' "${platform}" "${clients_only}" >&2
+      exit 1
+    fi
+  done
 done
 if grep -Fq '  publish-release:' "${workflow_file}"; then
   printf 'release publication must not wait for all client build jobs\n' >&2
