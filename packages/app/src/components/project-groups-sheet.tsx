@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, View, Pressable } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -9,6 +9,7 @@ import {
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { Field } from "@/components/ui/form-field";
 import { SearchField } from "@/components/ui/search-field";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -26,6 +27,18 @@ export interface ProjectGroupsSheetProps {
   onClose: () => void;
 }
 
+interface GroupWrite {
+  serverId: string;
+  projectId: string;
+  projectName: string;
+  groupName: string | null;
+}
+
+interface PendingGroupOperation {
+  action: "save" | "delete";
+  targets: GroupWrite[];
+}
+
 /** Edits one named group at a time; persistence stays with each owning host project. */
 export function ProjectGroupsSheet({
   visible,
@@ -40,7 +53,9 @@ export function ProjectGroupsSheet({
         initialGroupName === null
           ? []
           : projects
-              .filter((project) => project.groupName === initialGroupName)
+              .filter((project) =>
+                project.hosts.some((host) => host.groupName === initialGroupName),
+              )
               .map((project) => project.viewKey),
       ),
     [initialGroupName, projects],
@@ -49,6 +64,8 @@ export function ProjectGroupsSheet({
   const [members, setMembers] = useState(initialMembers);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pending, setPending] = useState<PendingGroupOperation | null>(null);
+  const draftLocked = saving || pending !== null;
   const [search, setSearch] = useState("");
   const [includeOtherGroups, setIncludeOtherGroups] = useState(false);
   const initializedEditorKey = useRef<string | null>(null);
@@ -64,27 +81,39 @@ export function ProjectGroupsSheet({
     setName(initialGroupName ?? "");
     setMembers(initialMembers);
     setError(null);
+    setPending(null);
     setSearch("");
     setIncludeOtherGroups(false);
   }, [initialGroupName, initialMembers, visible]);
 
   const editable = useCallback(
     (project: SidebarProjectEntry) =>
-      project.hosts.every((host) => capableHosts.get(host.serverId) === true),
-    [capableHosts],
+      project.hosts.every(
+        (host) =>
+          (members.has(project.viewKey) && host.groupName !== initialGroupName) ||
+          capableHosts.get(host.serverId) === true,
+      ),
+    [capableHosts, initialGroupName, members],
   );
   const selectedProjects = useMemo(
     () => projects.filter((project) => members.has(project.viewKey)),
     [members, projects],
   );
   const existingMembers = useMemo(
-    () => projects.filter((project) => project.groupName === initialGroupName),
+    () =>
+      projects.filter(
+        (project) =>
+          initialGroupName !== null &&
+          project.hosts.some((host) => host.groupName === initialGroupName),
+      ),
     [initialGroupName, projects],
   );
   const visibleProjects = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
     return projects.filter((project) => {
-      const belongsToCurrentGroup = project.groupName === initialGroupName;
+      const belongsToCurrentGroup =
+        initialGroupName !== null &&
+        project.hosts.some((host) => host.groupName === initialGroupName);
       const isVisibleByGroup =
         includeOtherGroups ||
         project.groupName === null ||
@@ -103,8 +132,8 @@ export function ProjectGroupsSheet({
     [],
   );
   const includeOtherGroupsAccessibilityState = useMemo(
-    () => ({ checked: includeOtherGroups, disabled: saving }),
-    [includeOtherGroups, saving],
+    () => ({ checked: includeOtherGroups, disabled: draftLocked }),
+    [draftLocked, includeOtherGroups],
   );
   const header = useMemo<SheetHeader>(
     () => ({ title: initialGroupName ? "Edit project group" : "New project group" }),
@@ -120,7 +149,50 @@ export function ProjectGroupsSheet({
     });
   }, []);
 
+  const runOperation = useCallback(
+    async (operation: PendingGroupOperation) => {
+      setSaving(true);
+      setError(null);
+      const failures: GroupWrite[] = [];
+      const messages: string[] = [];
+      const runtime = getHostRuntimeStore();
+      await Promise.all(
+        operation.targets.map(async (target) => {
+          try {
+            if (capableHosts.get(target.serverId) !== true) {
+              throw new Error("Update this host before changing project groups");
+            }
+            const client = runtime.getClient(target.serverId);
+            if (!client) throw new Error("Host is disconnected");
+            await client.setProjectGroup(target.projectId, target.groupName);
+          } catch (cause) {
+            failures.push(target);
+            const serverLabel =
+              runtime.getHosts().find((host) => host.serverId === target.serverId)?.label ??
+              target.serverId;
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            messages.push(`${target.projectName} (${serverLabel}): ${detail}`);
+          }
+        }),
+      );
+      setSaving(false);
+      if (failures.length > 0) {
+        setPending({ action: operation.action, targets: failures });
+        setError(`${messages.join("; ")}. Retry to finish the change.`);
+        return;
+      }
+      setPending(null);
+      onClose();
+    },
+    [capableHosts, onClose],
+  );
+
   const save = useCallback(async () => {
+    if (saving || pending?.action === "delete") return;
+    if (pending) {
+      await runOperation(pending);
+      return;
+    }
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError("Enter a group name.");
@@ -130,61 +202,42 @@ export function ProjectGroupsSheet({
       setError("Select at least one project.");
       return;
     }
-    const changed = new Map<string, string | null>();
-    for (const project of selectedProjects) changed.set(project.viewKey, trimmedName);
-    for (const project of existingMembers)
-      if (!members.has(project.viewKey)) changed.set(project.viewKey, null);
-    const targets = projects.filter((project) => changed.has(project.viewKey));
-    if (targets.some((project) => !editable(project))) {
-      setError("Update every host for the selected projects before changing this group.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const failures: string[] = [];
-    await Promise.all(
-      targets.flatMap((project) =>
-        project.hosts.map(async (host) => {
-          try {
-            const client = getHostRuntimeStore().getClient(host.serverId);
-            if (!client) throw new Error("Host is disconnected");
-            await client.setProjectGroup(host.projectId, changed.get(project.viewKey) ?? null);
-          } catch {
-            failures.push(project.projectName);
-          }
-        }),
-      ),
+    const targets: GroupWrite[] = selectedProjects.flatMap((project) =>
+      project.hosts.map((host) => ({
+        serverId: host.serverId,
+        projectId: host.projectId,
+        projectName: project.projectName,
+        groupName: trimmedName,
+      })),
     );
-    setSaving(false);
-    if (failures.length > 0) {
-      setError(
-        `Could not update ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
-      );
-      return;
+    for (const project of existingMembers) {
+      if (members.has(project.viewKey)) continue;
+      for (const host of project.hosts) {
+        if (host.groupName !== initialGroupName) continue;
+        targets.push({
+          serverId: host.serverId,
+          projectId: host.projectId,
+          projectName: project.projectName,
+          groupName: null,
+        });
+      }
     }
-    onClose();
+    await runOperation({ action: "save", targets });
   }, [
-    editable,
     existingMembers,
     initialGroupName,
     members,
     name,
-    onClose,
-    projects,
+    pending,
+    runOperation,
+    saving,
     selectedProjects,
   ]);
 
   const remove = useCallback(async () => {
-    if (existingMembers.some((project) => !editable(project))) {
-      setError("Update every host for this group before deleting it.");
-      return;
-    }
-    if (
-      existingMembers.some((project) =>
-        project.hosts.some((host) => getHostRuntimeStore().getClient(host.serverId) === null),
-      )
-    ) {
-      setError("Reconnect every host for this group before deleting it.");
+    if (saving || pending?.action === "save") return;
+    if (pending) {
+      await runOperation(pending);
       return;
     }
     const confirmed = await confirmDialog({
@@ -195,40 +248,18 @@ export function ProjectGroupsSheet({
       destructive: true,
     });
     if (!confirmed) return;
-    setMembers(new Set());
-    setName("");
-    setSaving(true);
-    const failures: string[] = [];
-    await Promise.all(
-      existingMembers.flatMap((project) =>
-        project.hosts.map(async (host) => {
-          try {
-            const client = getHostRuntimeStore().getClient(host.serverId);
-            if (!client) throw new Error("Host is disconnected");
-            await client.setProjectGroup(host.projectId, null);
-          } catch {
-            failures.push(project.projectName);
-          }
-        }),
-      ),
+    const targets: GroupWrite[] = existingMembers.flatMap((project) =>
+      project.hosts
+        .filter((host) => host.groupName === initialGroupName)
+        .map((host) => ({
+          serverId: host.serverId,
+          projectId: host.projectId,
+          projectName: project.projectName,
+          groupName: null,
+        })),
     );
-    setSaving(false);
-    if (failures.length) {
-      setError(
-        `Could not delete this group from ${Array.from(new Set(failures)).join(", ")}. Retry to finish the change.`,
-      );
-      return;
-    }
-    onClose();
-  }, [editable, existingMembers, initialGroupName, onClose]);
-
-  const canDelete =
-    initialGroupName !== null &&
-    existingMembers.every(
-      (project) =>
-        editable(project) &&
-        project.hosts.every((host) => getHostRuntimeStore().getClient(host.serverId) !== null),
-    );
+    await runOperation({ action: "delete", targets });
+  }, [existingMembers, initialGroupName, pending, runOperation, saving]);
 
   const handleRemove = useCallback(() => {
     void remove();
@@ -236,6 +267,9 @@ export function ProjectGroupsSheet({
   const handleSave = useCallback(() => {
     void save();
   }, [save]);
+  const handleClose = useCallback(() => {
+    if (!saving) onClose();
+  }, [onClose, saving]);
   const footer = useMemo(
     () => (
       <View style={styles.footer}>
@@ -244,27 +278,33 @@ export function ProjectGroupsSheet({
             variant="outline"
             size="md"
             onPress={handleRemove}
-            disabled={saving || !canDelete}
+            disabled={saving || pending?.action === "save"}
           >
             Delete
           </Button>
         ) : null}
         <View style={styles.footerSpacer} />
-        <Button variant="secondary" size="md" onPress={onClose} disabled={saving}>
+        <Button variant="secondary" size="md" onPress={handleClose} disabled={saving}>
           Cancel
         </Button>
-        <Button variant="default" size="md" onPress={handleSave} loading={saving}>
+        <Button
+          variant="default"
+          size="md"
+          onPress={handleSave}
+          loading={saving}
+          disabled={saving || pending?.action === "delete"}
+        >
           Save
         </Button>
       </View>
     ),
-    [canDelete, handleRemove, handleSave, initialGroupName, onClose, saving],
+    [handleClose, handleRemove, handleSave, initialGroupName, pending, saving],
   );
 
   return (
     <AdaptiveModalSheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       header={header}
       footer={footer}
       desktopMaxWidth={440}
@@ -275,7 +315,7 @@ export function ProjectGroupsSheet({
           testID="project-group-name"
           initialValue={name}
           onChangeText={setName}
-          editable={!saving}
+          editable={!draftLocked}
           placeholder="Projects"
         />
       </Field>
@@ -290,11 +330,11 @@ export function ProjectGroupsSheet({
           testID="project-group-search"
           clearTestID="project-group-search-clear"
         />
-        <Pressable
+        <PressHighlight
           accessibilityRole="checkbox"
           accessibilityLabel="Include projects in other groups"
           accessibilityState={includeOtherGroupsAccessibilityState}
-          disabled={saving}
+          disabled={draftLocked}
           onPress={toggleIncludeOtherGroups}
           style={styles.includeOtherGroups}
           testID="project-group-include-other-groups"
@@ -305,7 +345,7 @@ export function ProjectGroupsSheet({
             ) : null}
           </View>
           <Text style={styles.includeOtherGroupsLabel}>Include projects in other groups</Text>
-        </Pressable>
+        </PressHighlight>
       </View>
       <ScrollView style={styles.projects} contentContainerStyle={styles.projectsContent}>
         {visibleProjects.length > 0 ? (
@@ -315,7 +355,7 @@ export function ProjectGroupsSheet({
               project={project}
               enabled={editable(project)}
               selected={members.has(project.viewKey)}
-              saving={saving}
+              saving={draftLocked}
               onToggle={toggleMember}
             />
           ))
@@ -348,7 +388,7 @@ function ProjectGroupMemberRow({
     [enabled, saving, selected],
   );
   return (
-    <Pressable
+    <PressHighlight
       testID={`project-group-project-${project.viewKey}`}
       accessibilityRole="checkbox"
       accessibilityState={accessibilityState}
@@ -362,7 +402,7 @@ function ProjectGroupMemberRow({
       <Text style={[styles.projectName, !enabled && styles.projectNameDisabled]} numberOfLines={1}>
         {project.projectName}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
