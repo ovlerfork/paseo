@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 06:24:32 +0000
+Subject: [PATCH] Initialize replacement timeline owners from client connection
+ state
+
+
+diff --git a/packages/app/src/contexts/session-context.test.tsx b/packages/app/src/contexts/session-context.test.tsx
+new file mode 100644
+index 000000000..d93b7d1f2
+--- /dev/null
++++ b/packages/app/src/contexts/session-context.test.tsx
+@@ -0,0 +1,209 @@
++/**
++ * @vitest-environment jsdom
++ */
++import React, { useEffect } from "react";
++import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
++import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++import { afterEach, expect, it, vi } from "vitest";
++import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
++import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
++import type { HostRuntimeStore } from "@/runtime/host-runtime";
++import { subscriptionFixture } from "@/runtime/subscription-fixture";
++import { selectAgentTimelineState, useSessionStore } from "@/stores/session-store";
++import {
++  createTimelineReplica,
++  createViewedTimelineOwner,
++  type TimelineResponsePayload,
++} from "@/timeline/viewed-timeline-sync";
++import { SessionProvider } from "./session-context";
++
++const { runtime, toast } = vi.hoisted(() => ({
++  runtime: {
++    current: null as Pick<
++      HostRuntimeStore,
++      "createViewedTimelineOwner" | "fetchAgentTimeline"
++    > | null,
++  },
++  toast: { error: () => {} },
++}));
++
++vi.mock("@/runtime/host-runtime", () => ({
++  getHostRuntimeStore: () => runtime.current,
++  useHostRuntimeIsConnected: () => true,
++}));
++vi.mock("@/contexts/voice-context", () => ({
++  useVoiceRuntimeOptional: () => null,
++  useVoiceAudioEngineOptional: () => null,
++}));
++vi.mock("@/contexts/toast-context", () => ({ useToast: () => toast }));
++vi.mock("@/hooks/use-client-activity", () => ({ useClientActivity: () => {} }));
++vi.mock("@/push-notifications", () => ({ startPushNotifications: () => () => {} }));
++vi.mock("@/stores/workspace-layout-store", () => ({
++  observeOpenWorkspaceAgentIds: (_serverId: string, publish: (ids: string[]) => void) => {
++    publish(["agent-1"]);
++    return () => {};
++  },
++}));
++vi.mock("@/subagents/provider-store", () => ({ resyncProviderSubagents: async () => {} }));
++vi.mock("@/git/checkout-status-cache", () => ({ applyCheckoutStatusUpdateFromEvent: () => {} }));
++vi.mock("@/utils/os-notifications", () => ({ sendOsNotification: async () => {} }));
++
++const SERVER_ID = "client-replacement";
++const AGENT_ID = "agent-1";
++
++class ConnectedClient {
++  readonly isConnected = true;
++  readonly timelineListeners = new Set<(message: SessionOutboundMessage) => void>();
++
++  constructor(
++    readonly text: string,
++    readonly seq: number,
++  ) {}
++
++  observeTimeline() {
++    return subscriptionFixture(Promise.resolve({}), (receive) => {
++      this.timelineListeners.add(receive);
++      return () => this.timelineListeners.delete(receive);
++    });
++  }
++
++  observeEvents() {
++    return subscriptionFixture(Promise.resolve({}), () => () => {});
++  }
++
++  on() {
++    return () => {};
++  }
++
++  async fetchAgentTimeline(
++    agentId: string,
++    request: Parameters<DaemonClient["fetchAgentTimeline"]>[1],
++  ): Promise<TimelineResponsePayload> {
++    return {
++      requestId: "catch-up",
++      agentId,
++      agent: null,
++      direction: request?.direction ?? "tail",
++      projection: "projected",
++      reset: false,
++      epoch: "epoch-1",
++      window: { minSeq: 1, maxSeq: this.seq, nextSeq: this.seq + 1 },
++      startCursor: { epoch: "epoch-1", seq: this.seq },
++      endCursor: { epoch: "epoch-1", seq: this.seq },
++      entries: [
++        {
++          provider: "codex",
++          item: { type: "assistant_message", text: this.text, messageId: `reply-${this.seq}` },
++          timestamp: "2026-10-23T06:00:00.000Z",
++          seqStart: this.seq,
++          seqEnd: this.seq,
++          sourceSeqRanges: [{ startSeq: this.seq, endSeq: this.seq }],
++          collapsed: [],
++        },
++      ],
++      error: null,
++      hasNewer: false,
++      hasOlder: false,
++      staleCursor: false,
++      gap: false,
++    };
++  }
++
++  emitReply(text: string, seq: number) {
++    for (const receive of this.timelineListeners) {
++      receive({
++        type: "agent_stream",
++        payload: {
++          agentId: AGENT_ID,
++          timestamp: "2026-10-23T06:00:01.000Z",
++          epoch: "epoch-1",
++          seq,
++          event: {
++            type: "timeline",
++            provider: "codex",
++            item: { type: "assistant_message", text, messageId: `reply-${seq}` },
++          },
++        },
++      });
++    }
++  }
++}
++
++function Transcript() {
++  const session = useSessionStore((state) => state.sessions[SERVER_ID]);
++  const owner = session?.viewedTimelineSync;
++  useEffect(() => {
++    owner?.replaceVisibleAgentIds("transcript", [AGENT_ID]);
++    return () => owner?.replaceVisibleAgentIds("transcript", []);
++  }, [owner]);
++  const timeline = selectAgentTimelineState(session, AGENT_ID);
++  const items = [
++    ...(timeline.status === "cold" ? [] : timeline.items),
++    ...(session?.agentStreamHead.get(AGENT_ID) ?? []),
++  ];
++  return (
++    <div>
++      {items
++        .filter((item) => item.kind === "assistant_message")
++        .map((item) => (
++          <p key={item.id}>{item.text}</p>
++        ))}
++    </div>
++  );
++}
++
++afterEach(() => {
++  cleanup();
++  useSessionStore.getState().clearSession(SERVER_ID);
++  runtime.current = null;
++  vi.unstubAllGlobals();
++});
++
++it("catches up and receives assistant replies when a connected client is replaced", async () => {
++  vi.stubGlobal("React", React);
++  const first = new ConnectedClient("Original plan", 1);
++  const second = new ConnectedClient("Reply sent during replacement", 2);
++  let current = first;
++  useSessionStore.getState().initializeSession(SERVER_ID, null);
++  const replica = createTimelineReplica({
++    serverId: SERVER_ID,
++    storage: { readTimeline: async () => undefined, commitTimeline: () => {} },
++    prepareAgent: async () => {},
++  });
++  runtime.current = {
++    createViewedTimelineOwner: (serverId, ports) =>
++      createViewedTimelineOwner({
++        serverId,
++        replica,
++        replaceDemandedAgentIds: () => {},
++        drainQueuedAgentMessage: () => {},
++        ports,
++      }),
++    fetchAgentTimeline: async (serverId, agentId, request) => {
++      const page = await current.fetchAgentTimeline(agentId, request);
++      const owner = useSessionStore.getState().sessions[serverId]?.viewedTimelineSync;
++      owner?.flushStreamAgent(agentId);
++      owner?.applyTimelineResponse(page);
++      return page;
++    },
++  };
++  const queryClient = new QueryClient();
++  const view = (client: ConnectedClient) => (
++    <QueryClientProvider client={queryClient}>
++      <SessionProvider serverId={SERVER_ID} client={client as unknown as DaemonClient}>
++        <Transcript />
++      </SessionProvider>
++    </QueryClientProvider>
++  );
++  const rendered = render(view(first));
++  await screen.findByText("Original plan");
++  current = second;
++  rendered.rerender(view(second));
++  await screen.findByText("Reply sent during replacement");
++  expect(first.timelineListeners.size).toBe(0);
++  act(() => second.emitReply("Subsequent assistant reply", 3));
++  await screen.findByText("Subsequent assistant reply");
++  rendered.unmount();
++  await waitFor(() => expect(second.timelineListeners.size).toBe(0));
++  queryClient.clear();
++});
+diff --git a/packages/app/src/contexts/session-context.tsx b/packages/app/src/contexts/session-context.tsx
+index 430e4ade7..097ce3017 100644
+--- a/packages/app/src/contexts/session-context.tsx
++++ b/packages/app/src/contexts/session-context.tsx
+@@ -480,6 +480,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
+     viewedTimelineSyncRef.current = sync;
+     setViewedTimelineSync(serverId, sync);
+     sync.setActive(getIsAppVisible(appStateRef.current));
++    sync.setConnected(client.isConnected);
+     const stopObservingOpenChats = observeOpenWorkspaceAgentIds(serverId, (agentIds) =>
+       sync.replaceOpenTabAgentIds(agentIds),
+     );
