@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SettingsSection, SettingsCard, SettingsSelect } from "@/components/settings";
 import {
   useAppSettings,
+  type AppSettings,
   type OpenInSidePanePreferences,
   type PullRequestOpenLocation,
   type ServiceUrlBehavior,
@@ -83,7 +84,35 @@ function ServiceUrlRow() {
   );
 }
 
-/** Where things open: files, diffs, subagents, pull requests, and script URLs. Desktop only. */
+function MessageLinkRow() {
+  const { t } = useTranslation();
+  const { settings, updateSettings } = useAppSettings();
+  const options = useMemo(
+    () => [
+      {
+        value: "external" as const,
+        label: t("settings.layout.openInSidePane.messageLinks.external"),
+      },
+      { value: "in-app" as const, label: t("settings.layout.openInSidePane.messageLinks.inApp") },
+    ],
+    [t],
+  );
+  const change = useCallback(
+    (messageLinkOpenLocation: AppSettings["messageLinkOpenLocation"]) =>
+      void updateSettings({ messageLinkOpenLocation }),
+    [updateSettings],
+  );
+  return (
+    <SettingsSelect
+      label={t("settings.layout.openInSidePane.messageLinks.label")}
+      value={settings.messageLinkOpenLocation}
+      options={options}
+      onValueChange={change}
+    />
+  );
+}
+
+/** Where things open: files, diffs, subagents, pull requests, and URLs. Desktop only. */
 export function OpenLocationSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
@@ -117,6 +146,7 @@ export function OpenLocationSection() {
           onDestinationChange={handleDestinationChange}
         />
         <ServiceUrlRow />
+        <MessageLinkRow />
       </SettingsCard>
     </SettingsSection>
   );
