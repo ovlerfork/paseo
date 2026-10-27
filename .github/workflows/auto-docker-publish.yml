@@ -1016,7 +1016,7 @@ jobs:
   build-ios:
     needs: prepare
     if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.ios_needed == 'true' || needs.prepare.outputs.publish == 'false')
-    runs-on: ${{ needs.prepare.outputs.publish_mode == 'release' && 'macos-14' || 'macos-15' }}
+    runs-on: ${{ startsWith(needs.prepare.outputs.version, '0.12.') && 'macos-14' || 'macos-15' }}
     permissions:
       contents: write
     defaults:
@@ -1058,9 +1058,9 @@ jobs:
 
       - name: Select supported Xcode
         env:
-          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          SOURCE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          if [[ "${PUBLISH_MODE}" == "release" ]]; then
+          if [[ "${SOURCE_VERSION}" == 0.12.* ]]; then
             sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
           else
             sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
