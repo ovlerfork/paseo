@@ -242,21 +242,21 @@ if ! grep -Fqx '          NODE_OPTIONS: --max-old-space-size=4096' <<<"${macos_j
   printf 'macOS desktop build must raise the observed V8 old-space ceiling\n' >&2
   exit 1
 fi
-if ! grep -Fqx "    runs-on: \${{ needs.prepare.outputs.publish_mode == 'release' && 'macos-14' || 'macos-15' }}" <<<"${ios_job}" \
+if ! grep -Fqx "    runs-on: \${{ startsWith(needs.prepare.outputs.version, '0.12.') && 'macos-14' || 'macos-15' }}" <<<"${ios_job}" \
   || ! grep -Fqx '      - name: Select supported Xcode' <<<"${ios_job}" \
-  || ! grep -Fqx '          PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}' <<<"${ios_job}"; then
-  printf 'iOS build must select a runner and Xcode by publish mode\n' >&2
+  || ! grep -Fqx '          SOURCE_VERSION: ${{ needs.prepare.outputs.version }}' <<<"${ios_job}"; then
+  printf 'iOS build must select a runner and Xcode by source version\n' >&2
   exit 1
 fi
 xcode_selection_script="$(sed -n '/^      - name: Select supported Xcode$/,/^      - name: Build unsigned iOS IPA$/p' <<<"${ios_job}" | sed -n '/^        run: |$/,/^$/ { /^          / { s/^          //; p; } }')"
 sudo() { printf '%s\n' "$*"; }
 export -f sudo
 assert_equals 'xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer' \
-  "$(PUBLISH_MODE=release bash -c "${xcode_selection_script}")" 'stable iOS Xcode selection'
+  "$(SOURCE_VERSION=0.12.0 bash -c "${xcode_selection_script}")" '0.12 iOS Xcode selection'
 assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer' \
-  "$(PUBLISH_MODE=dev bash -c "${xcode_selection_script}")" 'development iOS Xcode selection'
+  "$(SOURCE_VERSION=0.13.2 bash -c "${xcode_selection_script}")" '0.13 stable iOS Xcode selection'
 assert_equals 'xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer' \
-  "$(PUBLISH_MODE=prerelease bash -c "${xcode_selection_script}")" 'prerelease iOS Xcode selection'
+  "$(SOURCE_VERSION=0.13.2-beta.1 bash -c "${xcode_selection_script}")" '0.13 prerelease iOS Xcode selection'
 
 for platform in linux windows macos ios; do
   job_body="$(sed -n "/^  build-${platform}:/,/^  build-[a-z]*:/p" "${workflow_file}")"

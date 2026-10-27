@@ -23,7 +23,11 @@ REQUIRED_ASSETS = {
         for extension in ("exe", "zip")
     ] + [
         f"Paseo-Setup-{version}-{arch}.exe.blockmap" for arch in ("x64", "arm64")
-    ] + [f"{channel}.yml"],
+    ] + [
+        f"Paseo-Setup-{version}.exe",
+        f"Paseo-Setup-{version}.exe.blockmap",
+        f"{channel}.yml",
+    ],
     "linux": lambda version, channel: [
         "Paseo-x86_64.AppImage",
         f"Paseo-{version}-amd64.deb",
@@ -77,10 +81,11 @@ def status(args: argparse.Namespace) -> None:
         print(f"draft_ready={str(is_draft and complete).lower()}", file=output)
 
 
-def collect_files(source: pathlib.Path, output: pathlib.Path) -> None:
-    for item in source.iterdir():
-        if item.is_file() and item.name not in {"builder-debug.yml", "builder-effective-config.yaml"}:
-            shutil.copy2(item, output / item.name)
+def collect_files(source: pathlib.Path, output: pathlib.Path, required: set[str]) -> None:
+    for name in required:
+        item = source / name
+        if item.is_file():
+            shutil.copy2(item, output / name)
 
 
 def file_sha512(path: pathlib.Path) -> str:
@@ -151,8 +156,8 @@ def release_notes(args: argparse.Namespace) -> str:
 def publish(args: argparse.Namespace) -> None:
     with tempfile.TemporaryDirectory() as temporary:
         staged = pathlib.Path(temporary)
-        collect_files(args.artifacts, staged)
         required = set(REQUIRED_ASSETS[args.platform](args.version, args.channel))
+        collect_files(args.artifacts, staged, required)
         missing = required - {file.name for file in staged.iterdir()}
         if missing:
             raise ValueError(f"Missing {args.platform} build assets: {', '.join(sorted(missing))}")
