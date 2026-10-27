@@ -23,7 +23,11 @@ REQUIRED_ASSETS = {
         for extension in ("exe", "zip")
     ] + [
         f"Paseo-Setup-{version}-{arch}.exe.blockmap" for arch in ("x64", "arm64")
-    ] + [f"{channel}.yml"],
+    ] + [
+        f"Paseo-Setup-{version}.exe",
+        f"Paseo-Setup-{version}.exe.blockmap",
+        f"{channel}.yml",
+    ],
     "linux": lambda version, channel: [
         "Paseo-x86_64.AppImage",
         f"Paseo-{version}-amd64.deb",

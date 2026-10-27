@@ -115,8 +115,17 @@ with tempfile.TemporaryDirectory() as temporary:
         metadata = yaml.safe_load((remote / f"{channel}.yml").read_text())
         assert metadata["files"][0]["sha512"] == digest(b"published x64")
         assert metadata["files"][1]["sha512"] == digest(("rebuilt " + windows_names[2]).encode())
+        combined_exe = f"Paseo-Setup-{version}.exe"
+        assert (remote / combined_exe).is_file()
+        assert (remote / f"{combined_exe}.blockmap").is_file()
         assets.status(argparse.Namespace(**common, output=output))
         assert "windows_needed=false" in output.read_text().splitlines()
+        (remote / f"{combined_exe}.blockmap").unlink()
+        incomplete_output = root / "incomplete-outputs"
+        assets.status(argparse.Namespace(**common, output=incomplete_output))
+        assert "windows_needed=true" in incomplete_output.read_text().splitlines()
+        assets.publish(argparse.Namespace(**common, platform="windows", artifacts=windows))
+        assert (remote / f"{combined_exe}.blockmap").is_file()
 
         # An existing feed cannot be paired with a different rebuilt installer.
         arm_exe = windows_names[2]
