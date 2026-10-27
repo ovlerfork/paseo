@@ -1,0 +1,398 @@
+{
+  "release": {
+    "id": 421620713,
+    "tag": "v0.13.0-dev.source-52f00c789",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-10-23T08:43:52Z",
+    "html_url": "https://github.com/ovlerfork/paseo/releases/tag/v0.13.0-dev.source-52f00c789",
+    "total_asset_count": 48
+  },
+  "source": {
+    "repository": "ovlerfork/paseo",
+    "tag_commit": "7211b5dd05baed93b2d8593d3ffcf2f7b5baf21f",
+    "public_root_listing_verified": true,
+    "root_entries_checked": 42
+  },
+  "inventory": {
+    "intended_count": 20,
+    "accidental_count": 28,
+    "total_count": 48,
+    "intended_assets": [
+      {
+        "id": 668521768,
+        "name": "dev-linux.yml",
+        "size": 673,
+        "digest": "sha256:afa7b9a85ef3f115d3f8ba60bf7709cfa6b23394885f02f77f3e65049cf5a53d"
+      },
+      {
+        "id": 668582848,
+        "name": "dev-mac.yml",
+        "size": 511,
+        "digest": "sha256:2cb81bdf20893832652156ebb78d43d5eb9c01a7806e71ecec7cac11b10db4e5"
+      },
+      {
+        "id": 668523548,
+        "name": "dev.yml",
+        "size": 693,
+        "digest": "sha256:f3c7174d094366608a724404a047ea10017b3ce809a08fda76d0de2a498b1a1b"
+      },
+      {
+        "id": 668520391,
+        "name": "Paseo-0.13.0-beta.1-amd64.deb",
+        "size": 135890400,
+        "digest": "sha256:a904828012d0c365786c19dfbbbaaadbb202fb9ca48eb698a16de2ed1c6afca7"
+      },
+      {
+        "id": 668582092,
+        "name": "Paseo-0.13.0-beta.1-arm64.dmg",
+        "size": 186476659,
+        "digest": "sha256:0ee4df0cb3787d590db57a7e0f1f57d37869631946bc4eb7aeeb9c4ee875cb45"
+      },
+      {
+        "id": 668582402,
+        "name": "Paseo-0.13.0-beta.1-arm64.dmg.blockmap",
+        "size": 196274,
+        "digest": "sha256:0160863550ca237dbc1b0a2e47fb94922b4298ea2c1d46e9710f9b529bc28660"
+      },
+      {
+        "id": 668582474,
+        "name": "Paseo-0.13.0-beta.1-arm64.zip",
+        "size": 180284056,
+        "digest": "sha256:1d70537c7e0fc3a4aafcc46c5d051b2d93b911302b5034bca7a55c8aa5bddd01"
+      },
+      {
+        "id": 668582795,
+        "name": "Paseo-0.13.0-beta.1-arm64.zip.blockmap",
+        "size": 186185,
+        "digest": "sha256:29c188640eedd266877e132d5f6f84b090bcebe2c02e1444f2624923208845f2"
+      },
+      {
+        "id": 668609729,
+        "name": "Paseo-0.13.0-beta.1-ios-unsigned.ipa",
+        "size": 32438358,
+        "digest": "sha256:2817852c70e770ed138b66878d2671a4f27cf4a538e2a40e6205154b82050343"
+      },
+      {
+        "id": 668520669,
+        "name": "Paseo-0.13.0-beta.1-x64.tar.gz",
+        "size": 164301325,
+        "digest": "sha256:43bf8f27266cd1441f2cf6a31d4d4a491523940e8354575abe9f5452abf0281b"
+      },
+      {
+        "id": 668521047,
+        "name": "Paseo-0.13.0-beta.1-x86_64.rpm",
+        "size": 114362765,
+        "digest": "sha256:f60f355c66442532cd4a05d7d4d83aa3491c9ea482b5e8db61a28d0eac946e25"
+      },
+      {
+        "id": 668521950,
+        "name": "Paseo-Setup-0.13.0-beta.1-arm64.exe",
+        "size": 145506168,
+        "digest": "sha256:342f3d38622e1658672d2fbe9bbd90f7c9b6c43648bcf5801e4cb679b45e06a6"
+      },
+      {
+        "id": 668522204,
+        "name": "Paseo-Setup-0.13.0-beta.1-arm64.exe.blockmap",
+        "size": 151265,
+        "digest": "sha256:3d0c7f5e51653b87d99dcb925aebe6a861ee828d05737ffccce647381e557047"
+      },
+      {
+        "id": 668522261,
+        "name": "Paseo-Setup-0.13.0-beta.1-arm64.zip",
+        "size": 192848260,
+        "digest": "sha256:b029ae82acc6111dcf2fe6a5df602b42fa30e6fe0f9c314bc735b96f91834252"
+      },
+      {
+        "id": 668522522,
+        "name": "Paseo-Setup-0.13.0-beta.1-x64.exe",
+        "size": 145004167,
+        "digest": "sha256:450fe8ba26a17d45293584049aeb0388f5f20458db6d3895c09adea5f3485d5e"
+      },
+      {
+        "id": 668522741,
+        "name": "Paseo-Setup-0.13.0-beta.1-x64.exe.blockmap",
+        "size": 151460,
+        "digest": "sha256:2c387ae49e62767d4c66cfebe75c73cc44c147964e5bd4565215a8f36d47829e"
+      },
+      {
+        "id": 668522801,
+        "name": "Paseo-Setup-0.13.0-beta.1-x64.zip",
+        "size": 194911182,
+        "digest": "sha256:9dabde0a8c25fa954cccfc5660e9c4e63e0795ad6aa9ae1b820f708a524a1afd"
+      },
+      {
+        "id": 668523163,
+        "name": "Paseo-Setup-0.13.0-beta.1.exe",
+        "size": 289911875,
+        "digest": "sha256:0bd41280efe06fbdda23a92b73472291c89c077e577c08f37e188d9fcc1e48c1"
+      },
+      {
+        "id": 668523514,
+        "name": "Paseo-Setup-0.13.0-beta.1.exe.blockmap",
+        "size": 301324,
+        "digest": "sha256:b6f1aa5a4121889288295ed2fbd556e7b7ee01d7361b81e57e3af2b5ed8091c3"
+      },
+      {
+        "id": 668521394,
+        "name": "Paseo-x86_64.AppImage",
+        "size": 169079897,
+        "digest": "sha256:bd4f48371fc3c83dbf05d1681de710b28eaa940e10a9ae057977c661a51c2e2a"
+      }
+    ],
+    "accidental_assets": [
+      {
+        "id": 668609367,
+        "name": "AGENTS.md",
+        "size": 23279,
+        "digest": "sha256:9f951a31132deb8ad9a0c89874aabb9a4009c94be460b2df19c474f7f5926bfb",
+        "public_source_root_path": "AGENTS.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609453,
+        "name": "CHANGELOG.md",
+        "size": 273327,
+        "digest": "sha256:6bf66e247aeb844ddd44f3d08815c79f149e638c7be9755eb2dd25f0eea2437a",
+        "public_source_root_path": "CHANGELOG.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609519,
+        "name": "CHANGELOG.zh-CN.md",
+        "size": 269984,
+        "digest": "sha256:cf25c7c23e9b657b006a75d04b3b1c3a2f30eab83b72b0b5adcad89bd3dcdef9",
+        "public_source_root_path": "CHANGELOG.zh-CN.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609585,
+        "name": "CLAUDE.md",
+        "size": 23279,
+        "digest": "sha256:9f951a31132deb8ad9a0c89874aabb9a4009c94be460b2df19c474f7f5926bfb",
+        "public_source_root_path": "CLAUDE.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610150,
+        "name": "cli-client-id",
+        "size": 36,
+        "digest": "sha256:e669cbf817707eb87103707973f7e9b8a4c24fae90f0af16aaf2db901412fcd3",
+        "public_source_root_path": "cli-client-id",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609641,
+        "name": "CONTRIBUTING.md",
+        "size": 6603,
+        "digest": "sha256:68e7f7969b22f5e0ce969548b7b05448083ee4834e09426082628c2660947999",
+        "public_source_root_path": "CONTRIBUTING.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609062,
+        "name": "default.dockerignore",
+        "size": 559,
+        "digest": "sha256:892dc4d16452fa64435b83e5b9957c9b9ebd84e0fee014262f3881670a9d82ae",
+        "public_source_root_path": ".dockerignore",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668609112,
+        "name": "default.gitignore",
+        "size": 1506,
+        "digest": "sha256:8f7aaac3d798f547bbb0187ec829cd289dfaed0d57f41176732451d6124542a1",
+        "public_source_root_path": ".gitignore",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668609143,
+        "name": "default.mise.toml",
+        "size": 609,
+        "digest": "sha256:007d4a9e592d146a138443b9b8048d7c31ede7e1ab22f16936b60fbfda3efb0a",
+        "public_source_root_path": ".mise.toml",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668609202,
+        "name": "default.oxfmtrc.json",
+        "size": 390,
+        "digest": "sha256:09b3d944d8fd96ae3d13363e85c0d1e1a498db8d020f8c6263fd90a12785d28f",
+        "public_source_root_path": ".oxfmtrc.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668609246,
+        "name": "default.oxlintrc.json",
+        "size": 21220,
+        "digest": "sha256:68a7977b3659e73df74c9cab0e97fc0b593455eeeeefc1838aa9efe726aa277c",
+        "public_source_root_path": ".oxlintrc.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668609307,
+        "name": "default.tool-versions",
+        "size": 71,
+        "digest": "sha256:93a13842b58d9fc9f9e26874812fb1c16cffe6973072adcc3de14f7881db311f",
+        "public_source_root_path": ".tool-versions",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": true
+      },
+      {
+        "id": 668610210,
+        "name": "flake.lock",
+        "size": 567,
+        "digest": "sha256:51afcaa58bd53b1929bd383415346a8c156ec93d6336b0fa5dcf71a0b04a77d4",
+        "public_source_root_path": "flake.lock",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610271,
+        "name": "flake.nix",
+        "size": 2379,
+        "digest": "sha256:8eecf966761b6fb405f15cd87ca5dabd03e2703dc6663b3f4f46d7a8838c501c",
+        "public_source_root_path": "flake.nix",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610306,
+        "name": "knip.json",
+        "size": 2792,
+        "digest": "sha256:1124b78e8d9634f9bf366f9cffd6d16c8cea4be3f341f631993e493863f8f984",
+        "public_source_root_path": "knip.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610706,
+        "name": "lefthook.yml",
+        "size": 391,
+        "digest": "sha256:1230598e4b5a8b39856b4e76663ce21ad629ff3e96de815b4d1386bb243f633e",
+        "public_source_root_path": "lefthook.yml",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609680,
+        "name": "LICENSE",
+        "size": 11708,
+        "digest": "sha256:79d5aedce6aa0adc547336dc1bd34c5cc9308ba110fac7079ed97515ee573ad3",
+        "public_source_root_path": "LICENSE",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610350,
+        "name": "package-lock.json",
+        "size": 1646989,
+        "digest": "sha256:dab3cfe19337d2e3b3df3c71697c9905c8f97cb05a70122a9aa42446e21bc424",
+        "public_source_root_path": "package-lock.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610412,
+        "name": "package.json",
+        "size": 11977,
+        "digest": "sha256:d78ac8cfa5c88d9ed32011105eb83a70f4fcfb59d287276669d94437159a4f4d",
+        "public_source_root_path": "package.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610468,
+        "name": "paseo.json",
+        "size": 1712,
+        "digest": "sha256:281df921c569e7b5f544fe63f9a981b892275a3fba82817560d9d4a6dbf59706",
+        "public_source_root_path": "paseo.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609895,
+        "name": "README.ja.md",
+        "size": 8358,
+        "digest": "sha256:a44ec3053f86a6308431eb30781442e205112b5d46607f4cf681d996f4229193",
+        "public_source_root_path": "README.ja.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668609949,
+        "name": "README.ko.md",
+        "size": 8337,
+        "digest": "sha256:4898f6d6f2047a218714578a5a8f0f7933a42aacfd0a16852781eb6cf564aece",
+        "public_source_root_path": "README.ko.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610021,
+        "name": "README.md",
+        "size": 9777,
+        "digest": "sha256:0748adcf4c93e2e9e6868a6b0caadc9988503bcd2f10f555f69b70f26931cbe9",
+        "public_source_root_path": "README.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610057,
+        "name": "README.zh-CN.md",
+        "size": 7630,
+        "digest": "sha256:91f5f92df626a05ae15f30cefbdfa4d696912f32c9c6d613abc6c0c095962074",
+        "public_source_root_path": "README.zh-CN.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610111,
+        "name": "SECURITY.md",
+        "size": 11427,
+        "digest": "sha256:de2f2b294b4a2d7857d9cf7c7cb8dfa23a7b2d5180f72154d71ca8fc2a9e979e",
+        "public_source_root_path": "SECURITY.md",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610510,
+        "name": "tsconfig.base.json",
+        "size": 342,
+        "digest": "sha256:53f842baba7b47b8667b3ce1f6cd6816f52e3d2c7508e7b24a117bd478c909ce",
+        "public_source_root_path": "tsconfig.base.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610549,
+        "name": "tsconfig.json",
+        "size": 40,
+        "digest": "sha256:6ab9dbbac0fb5647c93cbf0cbd665330d42da8ffdec12751b48e03d6ad6c2695",
+        "public_source_root_path": "tsconfig.json",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      },
+      {
+        "id": 668610612,
+        "name": "vitest.config.ts",
+        "size": 2641,
+        "digest": "sha256:e1b8ef403a25aaaf6070a41d2445cd489b8780b51348b93b96139e4aca21c418",
+        "public_source_root_path": "vitest.config.ts",
+        "source_root_path_exists": true,
+        "filename_maps_to_dotfile": false
+      }
+    ]
+  }
+}
