@@ -166,6 +166,19 @@ with tempfile.TemporaryDirectory() as temporary:
         assert metadata["sha512"] == metadata["files"][0]["sha512"]
         assert metadata["sha512"] == digest(macos_names[2].encode())
 
+        # The iOS publisher reads from the source root, which also contains
+        # repository files that must never become release assets.
+        source = root / "source"
+        source.mkdir()
+        ipa_name = assets.REQUIRED_ASSETS["ios"](version, channel)[0]
+        (source / ipa_name).write_bytes(b"unsigned ipa")
+        (source / "package.json").write_text('{"version":"0.13.0"}\n')
+        (source / "README.md").write_text("source tree\n")
+        before_ios = {file.name for file in remote.iterdir()}
+        assets.publish(argparse.Namespace(**common, platform="ios", artifacts=source))
+        assert {file.name for file in remote.iterdir()} - before_ios == {ipa_name}
+        assert (remote / ipa_name).read_bytes() == b"unsigned ipa"
+
         # A completed platform is not published again on a rerun.
         before = {file.name: file.read_bytes() for file in remote.iterdir()}
         assets.publish(argparse.Namespace(**common, platform="linux", artifacts=generated))
