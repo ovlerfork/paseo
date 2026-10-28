@@ -45,17 +45,21 @@ jobs:
               result = subprocess.run(command, capture_output=True, timeout=seconds)
               output = result.stdout + result.stderr
               status = result.returncode
+              exit_code = result.returncode
           except subprocess.TimeoutExpired as error:
               output = (error.stdout or b"") + (error.stderr or b"")
               status = f"timeout after {seconds}s"
+              exit_code = 124
           except OSError as error:
               output = str(error).encode()
               status = "could not start"
+              exit_code = 127
           lines = output.decode("utf-8", errors="replace").splitlines()
           if len(lines) > 120:
               print(f"Omitted {len(lines) - 120} earlier output lines", flush=True)
           print("\n".join(lines[-120:]), flush=True)
           print(f"Probe status: {status}", flush=True)
+          sys.exit(exit_code)
           PY
           }
 
@@ -110,19 +114,25 @@ jobs:
           printf '\nQuarantine attribute applied to copied app:\n'
           xattr -p com.apple.quarantine "${installed_app}"
           printf '\nFirst LaunchServices open of quarantined app:\n'
-          probe 20 open -n "${installed_app}"
+          open_status=0
+          probe 20 open -n "${installed_app}" || open_status=$?
           sleep 8
-          probe 10 screencapture -x "${RUNNER_TEMP}/paseo-mac-launch-screen.png"
+          probe 10 screencapture -x "${RUNNER_TEMP}/paseo-mac-launch-screen.png" || true
           printf '\nPaseo processes after open:\n'
           pgrep -fl 'Paseo.app/Contents/MacOS/Paseo' || true
           printf '\nGatekeeper assessment after open:\n'
-          probe 20 spctl --assess --type execute --verbose=4 "${installed_app}"
+          probe 20 spctl --assess --type execute --verbose=4 "${installed_app}" || true
           printf '\nRecent macOS policy logs:\n'
           probe 25 log show --last 3m --style compact \
-            --predicate 'process == "syspolicyd" OR process == "amfid" OR process == "taskgated-helper"'
+            --predicate 'process == "syspolicyd" OR process == "amfid" OR process == "taskgated-helper"' || true
           printf '\nRecent Paseo crash reports, if any:\n'
           find "${HOME}/Library/Logs/DiagnosticReports" -maxdepth 1 -type f -name '*Paseo*' -mmin -5 \
             -print -exec tail -60 {} \; 2>/dev/null | tail -120 || true
+          if (( open_status != 0 )); then
+            printf 'LaunchServices open failed with status %s.\n' "${open_status}" >&2
+            exit "${open_status}"
+          fi
+          echo 'LaunchServices open returned 0; UI readiness was not established by this probe.'
 
       - name: Upload runner display if available
         if: always()
