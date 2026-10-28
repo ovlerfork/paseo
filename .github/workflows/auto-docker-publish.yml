@@ -9,11 +9,13 @@ permissions:
 jobs:
   diagnose-macos-launch:
     runs-on: macos-14
+    timeout-minutes: 8
     permissions:
       contents: read
     steps:
       - name: Inspect published Apple Silicon app
         shell: bash
+        timeout-minutes: 7
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -28,6 +30,34 @@ jobs:
           mount_dir="${work_dir}/mounted"
           installed_app="${work_dir}/installed/Paseo.app"
           mounted=false
+
+          probe() {
+            local seconds="$1"
+            shift
+            /usr/bin/python3 - "${seconds}" "$@" <<'PY'
+          import subprocess
+          import sys
+
+          seconds = int(sys.argv[1])
+          command = sys.argv[2:]
+          print(f"Probe: {command!r} (timeout {seconds}s)", flush=True)
+          try:
+              result = subprocess.run(command, capture_output=True, timeout=seconds)
+              output = result.stdout + result.stderr
+              status = result.returncode
+          except subprocess.TimeoutExpired as error:
+              output = (error.stdout or b"") + (error.stderr or b"")
+              status = f"timeout after {seconds}s"
+          except OSError as error:
+              output = str(error).encode()
+              status = "could not start"
+          lines = output.decode("utf-8", errors="replace").splitlines()
+          if len(lines) > 120:
+              print(f"Omitted {len(lines) - 120} earlier output lines", flush=True)
+          print("\n".join(lines[-120:]), flush=True)
+          print(f"Probe status: {status}", flush=True)
+          PY
+          }
 
           cleanup() {
             if [[ "${mounted}" == true ]]; then
@@ -69,43 +99,21 @@ jobs:
 
           printf '\nInitial quarantine attributes:\n'
           xattr -l "${installed_app}" || true
-          printf '\nGatekeeper assessment before quarantine:\n'
-          if spctl --assess --type execute --verbose=4 "${installed_app}"; then
-            echo 'spctl exit: 0'
-          else
-            echo "spctl exit: $?"
-          fi
-
           quarantine="0083;$(printf '%x' "$(date +%s)");Safari;"
           xattr -w com.apple.quarantine "${quarantine}" "${installed_app}"
           printf '\nQuarantine attribute applied to copied app:\n'
           xattr -p com.apple.quarantine "${installed_app}"
-          printf '\nGatekeeper assessment with quarantine:\n'
-          if spctl --assess --type execute --verbose=4 "${installed_app}"; then
-            echo 'spctl exit: 0'
-          else
-            echo "spctl exit: $?"
-          fi
-
-          printf '\nLaunchServices open of quarantined app:\n'
-          if open -n "${installed_app}" >"${work_dir}/open.log" 2>&1; then
-            echo 'open exit: 0'
-          else
-            echo "open exit: $?"
-          fi
-          cat "${work_dir}/open.log"
+          printf '\nFirst LaunchServices open of quarantined app:\n'
+          probe 20 open -n "${installed_app}"
           sleep 8
-          if screencapture -x "${RUNNER_TEMP}/paseo-mac-launch-screen.png"; then
-            echo 'Captured runner display after LaunchServices open.'
-          else
-            echo 'Runner display capture unavailable; LaunchServices and policy logs remain diagnostic.'
-          fi
+          probe 10 screencapture -x "${RUNNER_TEMP}/paseo-mac-launch-screen.png"
           printf '\nPaseo processes after open:\n'
           pgrep -fl 'Paseo.app/Contents/MacOS/Paseo' || true
+          printf '\nGatekeeper assessment after open:\n'
+          probe 20 spctl --assess --type execute --verbose=4 "${installed_app}"
           printf '\nRecent macOS policy logs:\n'
-          log show --last 3m --style compact \
-            --predicate 'process == "syspolicyd" OR process == "amfid" OR process == "taskgated-helper"' \
-            2>&1 | tail -100 || true
+          probe 25 log show --last 3m --style compact \
+            --predicate 'process == "syspolicyd" OR process == "amfid" OR process == "taskgated-helper"'
           printf '\nRecent Paseo crash reports, if any:\n'
           find "${HOME}/Library/Logs/DiagnosticReports" -maxdepth 1 -type f -name '*Paseo*' -mmin -5 \
             -print -exec tail -60 {} \; 2>/dev/null | tail -120 || true
