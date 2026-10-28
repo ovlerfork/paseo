@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   diagnose-macos-launch:
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 8
     permissions:
       contents: read
@@ -28,7 +28,7 @@ jobs:
           digest=48b03f4e79ce37070db28e349a8c5af2dc3a4414fe5a9fe5b6af1c324d241939
           work_dir="$(mktemp -d "${RUNNER_TEMP}/paseo-mac-diagnostic.XXXXXX")"
           mount_dir="${work_dir}/mounted"
-          installed_app="${work_dir}/installed/Paseo.app"
+          installed_app=/Applications/Paseo.app
           mounted=false
 
           probe() {
@@ -68,7 +68,13 @@ jobs:
 
           sw_vers
           uname -m
+          [[ "$(sw_vers -productVersion)" == 26.* ]]
           [[ "$(uname -m)" == arm64 ]]
+          printf 'Install path: %s\n' "${installed_app}"
+          if [[ -e "${installed_app}" || -L "${installed_app}" ]]; then
+            printf 'Refusing to overwrite existing app: %s\n' "${installed_app}" >&2
+            exit 1
+          fi
 
           gh api "repos/${repo}/releases/assets/${asset_id}" > "${work_dir}/asset.json"
           jq -e --arg name "${asset}" --argjson id "${asset_id}" \
@@ -78,10 +84,10 @@ jobs:
           gh release download "${tag}" --repo "${repo}" --pattern "${asset}" --dir "${work_dir}"
           printf '%s  %s\n' "${digest}" "${work_dir}/${asset}" | shasum -a 256 -c -
 
-          mkdir -p "${mount_dir}" "$(dirname "${installed_app}")"
+          mkdir -p "${mount_dir}"
           hdiutil attach -readonly -nobrowse -mountpoint "${mount_dir}" "${work_dir}/${asset}" >/dev/null
           mounted=true
-          ditto "${mount_dir}/Paseo.app" "${installed_app}"
+          sudo -n ditto "${mount_dir}/Paseo.app" "${installed_app}"
           hdiutil detach -quiet "${mount_dir}"
           mounted=false
 
@@ -100,7 +106,7 @@ jobs:
           printf '\nInitial quarantine attributes:\n'
           xattr -l "${installed_app}" || true
           quarantine="0083;$(printf '%x' "$(date +%s)");Safari;"
-          xattr -w com.apple.quarantine "${quarantine}" "${installed_app}"
+          sudo -n xattr -w com.apple.quarantine "${quarantine}" "${installed_app}"
           printf '\nQuarantine attribute applied to copied app:\n'
           xattr -p com.apple.quarantine "${installed_app}"
           printf '\nFirst LaunchServices open of quarantined app:\n'
