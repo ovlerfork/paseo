@@ -5,14 +5,15 @@ Subject: [PATCH] Add searchable shared project groups to the sidebar
 
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index 58d0dee05..8d5464576 100644
+index 58d0dee05..bba5b46fe 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -1,3 +1,4 @@
-+import { withUnistyles } from "react-native-unistyles";
+@@ -1,4 +1,5 @@
  import { router } from "expo-router";
++import { withUnistyles } from "react-native-unistyles";
  import {
    CircleGauge,
+   FolderPlus,
 @@ -21,7 +22,7 @@ import { Gesture } from "react-native-gesture-handler";
  import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
  import { scheduleOnRN } from "react-native-worklets";
@@ -833,7 +834,7 @@ index 000000000..3d54e7c6c
 +  projectNameDisabled: { color: theme.colors.foregroundMuted },
 +}));
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index 9ce91b5a1..202dde149 100644
+index 9ce91b5a1..3ee2d97bf 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
 @@ -37,7 +37,16 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
@@ -1000,7 +1001,7 @@ index 9ce91b5a1..202dde149 100644
    const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
    const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
      new Map(),
-@@ -2399,24 +2482,70 @@ function ProjectModeList({
+@@ -2347,6 +2430,35 @@ function ProjectModeList({
      ],
    );
  
@@ -1032,7 +1033,11 @@ index 9ce91b5a1..202dde149 100644
 +    (serverId) => supportsProjectGroupsByServerId.get(serverId) === true,
 +  );
 +  const editProjectGroup = useCallback((groupName: string) => setEditingGroupName(groupName), []);
-   const projectBody =
++
+   const renderProject = useCallback(
+     ({ item, drag, isActive, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) =>
+       renderProjectBlock(item, { drag, isDragging: isActive, dragHandleProps }),
+@@ -2403,20 +2515,38 @@ function ProjectModeList({
      projects.length === 0 ? (
        <SidebarProjectEmptyState onAddProject={onAddProject} onImportSession={onImportSession} />
      ) : (
@@ -1085,7 +1090,7 @@ index 9ce91b5a1..202dde149 100644
      );
  
    const content = (
-@@ -2465,8 +2594,9 @@ function ProjectModeList({
+@@ -2465,8 +2595,9 @@ function ProjectModeList({
        {unpinnedProjects.length > 0 ||
        hasActiveHostFilter ||
        hasActiveProjectFilter ||
@@ -1097,7 +1102,7 @@ index 9ce91b5a1..202dde149 100644
          : null}
        {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
        {listFooterComponent}
-@@ -2474,28 +2604,37 @@ function ProjectModeList({
+@@ -2474,28 +2605,37 @@ function ProjectModeList({
    );
  
    return (
@@ -1157,7 +1162,7 @@ index 9ce91b5a1..202dde149 100644
    );
  }
  
-@@ -2516,6 +2655,36 @@ const styles = StyleSheet.create((theme) => ({
+@@ -2516,6 +2656,36 @@ const styles = StyleSheet.create((theme) => ({
    projectListContainer: {
      width: "100%",
    },
