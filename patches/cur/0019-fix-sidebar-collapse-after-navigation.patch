@@ -271,10 +271,8 @@ index 4a933f03e..6f4f792bc 100644
  import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
  import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
  import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
-@@ -71,6 +74,16 @@ export function SidebarModelProvider({
-   const { t } = useTranslation();
-   const modelActive = active !== false || keyboardNavigationActive;
-   const list = useSidebarWorkspacesList({ enabled: modelActive });
+@@ -77,4 +80,14 @@ export function SidebarModelProvider({
+   const showBackground = useSidebarViewStore((state) => state.showBackground);
 +  const selection = useActiveWorkspaceSelection();
 +  const selectedWorkspaceKey = selection ? `${selection.serverId}:${selection.workspaceId}` : null;
 +  const persistenceKey = selection ? buildWorkspaceTabPersistenceKey(selection) : null;
@@ -285,9 +283,9 @@ index 4a933f03e..6f4f792bc 100644
 +  const focusKey = selectedWorkspaceKey
 +    ? JSON.stringify([selectedWorkspaceKey, focusedTabId])
 +    : null;
-   const showBackground = useSidebarViewStore((state) => state.showBackground);
    const groupMode = useSidebarViewStore((state) => state.groupMode);
    const labelFilter = useSidebarViewStore((state) => state.labelFilter);
+   const projectFilters = useSidebarViewStore((state) => state.projectFilters);
 @@ -87,6 +100,7 @@ export function SidebarModelProvider({
      (state) => state.collapsedProjectGroupNames,
    );
