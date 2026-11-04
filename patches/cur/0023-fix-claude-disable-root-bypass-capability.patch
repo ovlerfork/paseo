@@ -1,6 +1,6 @@
-From 936c93ea62ba9dc6ffd23651948834401cd07ebc Mon Sep 17 00:00:00 2001
+From e0579c208b4b0cb4552ad7ba9ccc7eaa72a8a8e8 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
-Date: Wed, 4 Nov 2026 20:43:24 +0000
+Date: Wed, 4 Nov 2026 20:44:41 +0000
 Subject: [PATCH] fix(claude): disable bypass capability for root launches
 
 ---
@@ -9,20 +9,21 @@ Subject: [PATCH] fix(claude): disable bypass capability for root launches
  2 files changed, 7 insertions(+), 4 deletions(-)
 
 diff --git a/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts b/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
-index 539392652..50adb238a 100644
+index 539392652..f09f3342f 100644
 --- a/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
 +++ b/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
-@@ -1053,7 +1053,8 @@ test("captures Claude stderr in the turn failure diagnostic when stderr arrives
+@@ -1053,7 +1053,9 @@ test("captures Claude stderr in the turn failure diagnostic when stderr arrives
    }
  });
  
 -test("preserves bypass capability across query restarts triggered by thinking changes", async () => {
-+test.each([0, 1000])("preserves UID %i bypass capability across query restarts", async (uid) => {
++test.each([0, 1000])("preserves UID %i bypass capability across query restarts", async (uid, { onTestFinished }) => {
 +  const getuid = vi.spyOn(process, "getuid").mockReturnValue(uid);
++  onTestFinished(() => getuid.mockRestore());
    const capturedOptions: Array<{
      permissionMode?: string;
      allowDangerouslySkipPermissions?: boolean;
-@@ -1091,15 +1092,16 @@ test("preserves bypass capability across query restarts triggered by thinking ch
+@@ -1091,11 +1093,11 @@ test("preserves bypass capability across query restarts triggered by thinking ch
      expect(capturedOptions).toHaveLength(2);
      expect(capturedOptions[0]).toMatchObject({
        permissionMode: "bypassPermissions",
@@ -36,11 +37,6 @@ index 539392652..50adb238a 100644
        effort: "high",
      });
    } finally {
-     await session.close();
-+    getuid.mockRestore();
-   }
- });
- 
 diff --git a/packages/server/src/server/agent/providers/claude/agent.ts b/packages/server/src/server/agent/providers/claude/agent.ts
 index 6516ff81b..d1a52e42e 100644
 --- a/packages/server/src/server/agent/providers/claude/agent.ts
