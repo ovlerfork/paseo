@@ -54,7 +54,7 @@ index 0f2251947..5d0656662 100755
 +fi
 +
 +echo "[mod:claude-code] installing ${package} with pnpm"
-+paseo-mod-install node "$package"
++paseo-mod-install node --allow-build=@anthropic-ai/claude-code "$package"
  echo "[mod:claude-code] done ($(command -v claude))"
 diff --git a/docker/mods/codex/Dockerfile b/docker/mods/codex/Dockerfile
 index 0c908e14b..a94a3173f 100644
