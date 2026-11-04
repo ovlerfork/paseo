@@ -871,13 +871,10 @@ index 5000e1f06..5046892b7 100644
  import { NestableScrollContainer } from "react-native-draggable-flatlist";
  import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
  import type { DraggableListDragHandleProps } from "./draggable-list.types";
-@@ -155,5 +164,6 @@ import { useHostBadges } from "@/hosts/use-host-badges";
+@@ -155,2 +164,3 @@ import { useHostBadges } from "@/hosts/use-host-badges";
  import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
- import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 +import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
- 
- const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
- 
+ import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 @@ -167,6 +177,9 @@ const ThemedPlus = withUnistyles(Plus);
  const ThemedMoreVertical = withUnistyles(MoreVertical);
  const ThemedTrash2 = withUnistyles(Trash2);
