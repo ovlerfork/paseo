@@ -36,8 +36,7 @@ diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/com
 index b4b54db3d..f827d8f5b 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -1,5 +1,6 @@
- import { useAddHost } from "@/hosts/add-host";
+@@ -2,4 +2,5 @@
  import { router } from "expo-router";
 +import { withUnistyles } from "react-native-unistyles";
  import {
@@ -169,10 +168,7 @@ index b4b54db3d..f827d8f5b 100644
  
  // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
  // avoid the "Unable to find node on an unmounted component" crash when Unistyles
-@@ -890,6 +919,13 @@ const styles = StyleSheet.create((theme) => ({
-     gap: 2,
-     paddingBottom: theme.spacing[1.5],
-   },
+@@ -893,3 +922,10 @@ const styles = StyleSheet.create((theme) => ({
 +  workspacesSectionActionButton: {
 +    width: 28,
 +    height: 28,
@@ -875,10 +871,9 @@ index 5000e1f06..5046892b7 100644
  import { NestableScrollContainer } from "react-native-draggable-flatlist";
  import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
  import type { DraggableListDragHandleProps } from "./draggable-list.types";
-@@ -155,6 +164,7 @@ import { useHostBadges } from "@/hosts/use-host-badges";
+@@ -155,5 +164,6 @@ import { useHostBadges } from "@/hosts/use-host-badges";
  import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
  import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
- import { bySizing } from "@/components/ui/control-geometry";
 +import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
  
  const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
