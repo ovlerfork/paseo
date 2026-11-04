@@ -1,8 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 0738ae5b51d44b1202047db0f66f062ac1a334e2 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 20:57:59 +0000
 Subject: [PATCH] Keep viewed sidebar branches open until navigation
 
+---
+ .../components/sidebar/sidebar-model.test.tsx | 239 ++++++++++++++++++
+ .../src/components/sidebar/sidebar-model.tsx  |  44 +++-
+ .../sidebar-collapsed-sections-store/index.ts |  63 ++++-
+ .../state.test.ts                             |  40 +++
+ .../sidebar-collapsed-sections-store/state.ts |  17 +-
+ 5 files changed, 385 insertions(+), 18 deletions(-)
+ create mode 100644 packages/app/src/components/sidebar/sidebar-model.test.tsx
 
 diff --git a/packages/app/src/components/sidebar/sidebar-model.test.tsx b/packages/app/src/components/sidebar/sidebar-model.test.tsx
 new file mode 100644
@@ -250,7 +258,7 @@ index 000000000..a0a5d16c7
 +  hidden.unmount();
 +});
 diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
-index ddbd88f81..9d41a0aff 100644
+index 4a933f03e..6f4f792bc 100644
 --- a/packages/app/src/components/sidebar/sidebar-model.tsx
 +++ b/packages/app/src/components/sidebar/sidebar-model.tsx
 @@ -28,6 +28,9 @@ import {
@@ -263,10 +271,10 @@ index ddbd88f81..9d41a0aff 100644
  import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
  import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
  import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
-@@ -68,6 +71,16 @@ export function SidebarModelProvider({
- }) {
+@@ -71,6 +74,16 @@ export function SidebarModelProvider({
    const { t } = useTranslation();
-   const list = useSidebarWorkspacesList({ enabled: active });
+   const modelActive = active !== false || keyboardNavigationActive;
+   const list = useSidebarWorkspacesList({ enabled: modelActive });
 +  const selection = useActiveWorkspaceSelection();
 +  const selectedWorkspaceKey = selection ? `${selection.serverId}:${selection.workspaceId}` : null;
 +  const persistenceKey = selection ? buildWorkspaceTabPersistenceKey(selection) : null;
@@ -280,7 +288,7 @@ index ddbd88f81..9d41a0aff 100644
    const showBackground = useSidebarViewStore((state) => state.showBackground);
    const groupMode = useSidebarViewStore((state) => state.groupMode);
    const labelFilter = useSidebarViewStore((state) => state.labelFilter);
-@@ -84,6 +97,7 @@ export function SidebarModelProvider({
+@@ -87,6 +100,7 @@ export function SidebarModelProvider({
      (state) => state.collapsedProjectGroupNames,
    );
    const synchronizeExpansion = useSidebarCollapsedSectionsStore((state) => state.synchronize);
@@ -288,7 +296,7 @@ index ddbd88f81..9d41a0aff 100644
    const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
    const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
    const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
-@@ -195,10 +209,13 @@ export function SidebarModelProvider({
+@@ -199,10 +213,13 @@ export function SidebarModelProvider({
    const expansionBranches = useMemo(() => {
      const activityFor = (keys: Iterable<string>) =>
        sidebarActivity([...keys].map((key) => filteredWorkspaceEntriesByKey.get(key)?.statusBucket));
@@ -302,7 +310,7 @@ index ddbd88f81..9d41a0aff 100644
          activity: activityFor(project.workspaces.map((workspace) => workspace.workspaceKey)),
        }),
      );
-@@ -210,26 +227,43 @@ export function SidebarModelProvider({
+@@ -214,26 +231,43 @@ export function SidebarModelProvider({
        groups.set(project.groupName, keys);
      }
      for (const [key, keys] of groups)
@@ -542,3 +550,6 @@ index 1978cfc75..40d674c65 100644
      );
    }
    return next;
+-- 
+2.43.0
+
