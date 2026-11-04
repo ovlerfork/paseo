@@ -94,7 +94,7 @@ index b4b54db3d..f827d8f5b 100644
  
  // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
  // avoid the "Unable to find node on an unmounted component" crash when Unistyles
-@@ -860,1 +889,8 @@
+@@ -870,4 +892,11 @@
  const styles = StyleSheet.create((theme) => ({
 +  workspacesSectionActionButton: {
 +    width: 28,
@@ -103,6 +103,9 @@ index b4b54db3d..f827d8f5b 100644
 +    justifyContent: "center",
 +    borderRadius: theme.borderRadius.lg,
 +  },
+   sidebarHeaderGroup: {
+     paddingTop: theme.spacing[2],
+     gap: 2,
 diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
 new file mode 100644
 index 000000000..8fa3576f1
