@@ -22,13 +22,13 @@ Subject: [PATCH] Add searchable shared project groups to the sidebar
  packages/protocol/src/messages.ts             |  27 ++
  .../authorization/operation-permissions.ts    |   2 +
  packages/server/src/server/session.test.ts    |   2 +
- packages/server/src/server/session.ts         |  88 +++-
- .../src/server/session.workspaces.test.ts     |  66 +++
+ packages/server/src/server/session.ts         |  94 +++-
+ .../src/server/session.workspaces.test.ts     |  68 +++
  .../server/src/server/websocket-server.ts     |   3 +
  .../server/src/server/workspace-directory.ts  |   1 +
  .../src/server/workspace-registry.test.ts     |  30 ++
  .../server/src/server/workspace-registry.ts   |   8 +
- 24 files changed, 1225 insertions(+), 51 deletions(-)
+ 24 files changed, 1233 insertions(+), 51 deletions(-)
  create mode 100644 packages/app/src/components/project-groups-sheet.test.tsx
  create mode 100644 packages/app/src/components/project-groups-sheet.tsx
 
@@ -1729,7 +1729,7 @@ index 4b260f855..2d40bbdd6 100644
        case "send_agent_message_request":
          return this.handleSendAgentMessageRequest(msg);
        case "wait_for_finish_request":
-@@ -3763,6 +3765,81 @@ export class Session {
+@@ -3763,6 +3765,87 @@ export class Session {
      }
    }
  
@@ -1784,7 +1784,13 @@ index 4b260f855..2d40bbdd6 100644
 +        },
 +      });
 +      await this.emitProjectUpdate({ kind: "upsert", project: updated });
-+      const affectedWorkspaceIds = (await this.workspaceRegistry.list())
++      // v0.15.0 and its beta use list(); newer registries expose listActive().
++      const registry = this.workspaceRegistry as
++        | { listActive(): Promise<PersistedWorkspaceRecord[]> }
++        | { list(): Promise<PersistedWorkspaceRecord[]> };
++      const workspaces =
++        "listActive" in registry ? await registry.listActive() : await registry.list();
++      const affectedWorkspaceIds = workspaces
 +        .filter((workspace) => workspace.projectId === projectId)
 +        .map((workspace) => workspace.workspaceId);
 +      if (affectedWorkspaceIds.length > 0) {
@@ -1847,7 +1853,7 @@ index 6b1db3444..b6fc62c53 100644
        projectCustomIconRevision: null,
        projectRootPath: REPO_CWD,
        projectKind: "git",
-@@ -8414,6 +8415,71 @@ test("project.rename.request stores customName and emits an updated workspace de
+@@ -8414,6 +8415,73 @@ test("project.rename.request stores customName and emits an updated workspace de
    });
  });
  
@@ -1881,7 +1887,9 @@ index 6b1db3444..b6fc62c53 100644
 +    const updated = record as typeof project;
 +    projects.set(updated.projectId, updated);
 +  };
-+  session.workspaceRegistry.list = async () => [workspace];
++  Object.assign(session.workspaceRegistry, {
++    ["listActive" in session.workspaceRegistry ? "listActive" : "list"]: async () => [workspace],
++  });
 +  session.workspaceRegistry.get = async (id: string) =>
 +    id === workspace.workspaceId ? workspace : null;
 +
