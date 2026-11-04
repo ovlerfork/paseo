@@ -15,22 +15,12 @@ diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/a
 index 5046892b7..8480ef18b 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -166,1 +166,5 @@
+@@ -165,1 +165,5 @@
  import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
 +import {
 +  countProjectGroupWorkspaces,
 +  type ProjectGroupCounts,
 +} from "@/utils/sidebar-project-group-counts";
-@@ import { useSidebarRowItems } from "@/components/sidebar/display-preferences/mod
- import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
- import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
-+import {
-+  countProjectGroupWorkspaces,
-+  type ProjectGroupCounts,
-+} from "@/utils/sidebar-project-group-counts";
- 
- const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
- 
 @@ -258,7 +262,7 @@ interface SidebarWorkspaceListProps {
  
  interface ProjectGroupHeaderProps {

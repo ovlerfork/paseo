@@ -51,80 +51,6 @@ index b4b54db3d..f827d8f5b 100644
  
  interface SidebarSharedProps {
    theme: SidebarTheme;
-@@ -87,6 +90,7 @@ interface SidebarSharedProps {
-   projectIconTargets: SidebarProjectIconTarget[];
-   pinnedGroups: PinnedSidebarGroups;
-   projects: SidebarProjectEntry[];
-+  allProjects: SidebarProjectEntry[];
-   hasProjectsBeforeFilter: boolean;
-   hasActiveProjectFilter: boolean;
-   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
-@@ -143,6 +147,7 @@ export const LeftSidebar = memo(function LeftSidebar({
- 
-   const {
-     projects,
-+    allProjects,
-     hasProjectsBeforeFilter,
-     resolvedProjectFilters,
-     workspaceEntriesByKey,
-@@ -214,6 +219,7 @@ export const LeftSidebar = memo(function LeftSidebar({
-     projectIconTargets,
-     pinnedGroups,
-     projects,
-+    allProjects,
-     hasProjectsBeforeFilter,
-     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
-     workspaceEntriesByKey,
-@@ -498,6 +504,7 @@ function MobileSidebar({
-   projectIconTargets,
-   pinnedGroups,
-   projects,
-+  allProjects,
-   hasProjectsBeforeFilter,
-   hasActiveProjectFilter,
-   workspaceEntriesByKey,
-@@ -601,6 +608,7 @@ function MobileSidebar({
-             projectIconTargets={projectIconTargets}
-             pinnedGroups={pinnedGroups}
-             projects={projects}
-+            allProjects={allProjects}
-             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
-             hasActiveProjectFilter={hasActiveProjectFilter}
-             workspaceEntriesByKey={workspaceEntriesByKey}
-@@ -611,7 +619,7 @@ function MobileSidebar({
-             onImportSession={handleImportSession}
-             parentGestureRef={closeGestureRef}
-             dragGestureHostActive={active}
--            listHeaderComponent={workspacesSectionHeaderElement}
-+            listHeaderComponent={renderWorkspacesSectionHeader}
-           />
-         )}
- 
-@@ -634,6 +642,7 @@ function DesktopSidebar({
-   projectIconTargets,
-   pinnedGroups,
-   projects,
-+  allProjects,
-   hasProjectsBeforeFilter,
-   hasActiveProjectFilter,
-   workspaceEntriesByKey,
-@@ -797,6 +806,7 @@ function DesktopSidebar({
-               projectIconTargets={projectIconTargets}
-               pinnedGroups={pinnedGroups}
-               projects={projects}
-+              allProjects={allProjects}
-               hasProjectsBeforeFilter={hasProjectsBeforeFilter}
-               hasActiveProjectFilter={hasActiveProjectFilter}
-               workspaceEntriesByKey={workspaceEntriesByKey}
-@@ -807,7 +817,7 @@ function DesktopSidebar({
-               onWorkspacePress={closeSidebar}
-               parentGestureRef={closeGestureRef}
-               dragGestureHostActive={active}
--              listHeaderComponent={workspacesSectionHeaderElement}
-+              listHeaderComponent={renderWorkspacesSectionHeader}
-             />
-           )}
- 
 @@ -836,9 +846,28 @@ function DesktopSidebar({
    );
  }
@@ -162,13 +88,14 @@ index b4b54db3d..f827d8f5b 100644
 -// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
 -// renders (WorkspacesSectionHeader takes no props).
 -const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
-+function renderWorkspacesSectionHeader(onCreateProjectGroup?: () => void) {
++function workspacesSectionHeaderElement(onCreateProjectGroup?: () => void) {
 +  return <WorkspacesSectionHeader onCreateProjectGroup={onCreateProjectGroup} />;
 +}
  
  // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
  // avoid the "Unable to find node on an unmounted component" crash when Unistyles
-@@ -893,3 +922,10 @@ const styles = StyleSheet.create((theme) => ({
+@@ -860,1 +889,8 @@
+ const styles = StyleSheet.create((theme) => ({
 +  workspacesSectionActionButton: {
 +    width: 28,
 +    height: 28,
@@ -176,9 +103,6 @@ index b4b54db3d..f827d8f5b 100644
 +    justifyContent: "center",
 +    borderRadius: theme.borderRadius.lg,
 +  },
-   sidebarContent: {
-     flex: 1,
-     minHeight: 0,
 diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
 new file mode 100644
 index 000000000..8fa3576f1
@@ -871,9 +795,10 @@ index 5000e1f06..5046892b7 100644
  import { NestableScrollContainer } from "react-native-draggable-flatlist";
  import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
  import type { DraggableListDragHandleProps } from "./draggable-list.types";
-@@ -155,2 +164,3 @@ import { useHostBadges } from "@/hosts/use-host-badges";
+@@ -155,2 +164,4 @@ import { useHostBadges } from "@/hosts/use-host-badges";
  import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 +import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
++import { useSidebarModel } from "@/components/sidebar/sidebar-model";
  import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 @@ -167,6 +177,9 @@ const ThemedPlus = withUnistyles(Plus);
  const ThemedMoreVertical = withUnistyles(MoreVertical);
@@ -885,14 +810,6 @@ index 5000e1f06..5046892b7 100644
  
  const foregroundColorMapping = (theme: Theme) => ({
    color: theme.colors.foreground,
-@@ -220,6 +233,7 @@ interface SidebarWorkspaceListProps {
-   projectIconTargets: SidebarProjectIconTarget[];
-   pinnedGroups: PinnedSidebarGroups;
-   projects: SidebarProjectEntry[];
-+  allProjects: SidebarProjectEntry[];
-   hasProjectsBeforeFilter: boolean;
-   /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
-   hasActiveProjectFilter: boolean;
 @@ -236,12 +250,69 @@ interface SidebarWorkspaceListProps {
    listFooterComponent?: ReactElement | null;
    // Rendered inside the scroll area, below the Pinned section and above the workspace
@@ -964,14 +881,6 @@ index 5000e1f06..5046892b7 100644
  interface ProjectHeaderRowProps {
    project: SidebarProjectEntry;
    displayName: string;
-@@ -1944,6 +2015,7 @@ export function SidebarWorkspaceList({
-   projectIconTargets,
-   pinnedGroups,
-   projects,
-+  allProjects,
-   hasProjectsBeforeFilter,
-   hasActiveProjectFilter,
-   workspaceEntriesByKey,
 @@ -2029,7 +2101,7 @@ export function SidebarWorkspaceList({
          supportsPinningByServerId={supportsPinningByServerId}
          onToggleWorkspacePin={onToggleWorkspacePin}
@@ -981,26 +890,11 @@ index 5000e1f06..5046892b7 100644
          sidebarFilterEmpty={sidebarFilterEmpty}
          parentGestureRef={parentGestureRef}
          dragGestureHostActive={dragGestureHostActive}
-@@ -2037,6 +2109,7 @@ export function SidebarWorkspaceList({
-     ) : (
-       <ProjectModeList
-         projects={projects}
-+        allProjects={allProjects}
-         pinnedGroups={pinnedGroups}
-         workspaceEntriesByKey={workspaceEntriesByKey}
-         projectIconByProjectViewKey={projectIconByProjectViewKey}
-@@ -2133,6 +2206,7 @@ function SidebarGroupedModeList({
- 
- function ProjectModeList({
-   projects,
-+  allProjects,
-   pinnedGroups,
-   workspaceEntriesByKey,
-   projectIconByProjectViewKey,
-@@ -2175,6 +2249,15 @@ function ProjectModeList({
+@@ -2175,6 +2249,16 @@ function ProjectModeList({
  }) {
    const { t } = useTranslation();
    const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
++  const { allProjects } = useSidebarModel();
 +  const [editingGroupName, setEditingGroupName] = useState<string | null | undefined>(undefined);
 +  const groupHostIds = useMemo(
 +    () =>
