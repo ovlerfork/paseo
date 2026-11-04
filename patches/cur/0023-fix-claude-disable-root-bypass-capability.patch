@@ -1,0 +1,60 @@
+From 936c93ea62ba9dc6ffd23651948834401cd07ebc Mon Sep 17 00:00:00 2001
+From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
+Date: Wed, 4 Nov 2026 20:43:24 +0000
+Subject: [PATCH] fix(claude): disable bypass capability for root launches
+
+---
+ .../server/agent/providers/claude/agent.redesign.test.ts  | 8 +++++---
+ .../server/src/server/agent/providers/claude/agent.ts     | 3 ++-
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts b/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
+index 539392652..50adb238a 100644
+--- a/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
++++ b/packages/server/src/server/agent/providers/claude/agent.redesign.test.ts
+@@ -1053,7 +1053,8 @@ test("captures Claude stderr in the turn failure diagnostic when stderr arrives
+   }
+ });
+ 
+-test("preserves bypass capability across query restarts triggered by thinking changes", async () => {
++test.each([0, 1000])("preserves UID %i bypass capability across query restarts", async (uid) => {
++  const getuid = vi.spyOn(process, "getuid").mockReturnValue(uid);
+   const capturedOptions: Array<{
+     permissionMode?: string;
+     allowDangerouslySkipPermissions?: boolean;
+@@ -1091,15 +1092,16 @@ test("preserves bypass capability across query restarts triggered by thinking ch
+     expect(capturedOptions).toHaveLength(2);
+     expect(capturedOptions[0]).toMatchObject({
+       permissionMode: "bypassPermissions",
+-      allowDangerouslySkipPermissions: true,
++      allowDangerouslySkipPermissions: uid !== 0,
+     });
+     expect(capturedOptions[1]).toMatchObject({
+       permissionMode: "bypassPermissions",
+-      allowDangerouslySkipPermissions: true,
++      allowDangerouslySkipPermissions: uid !== 0,
+       effort: "high",
+     });
+   } finally {
+     await session.close();
++    getuid.mockRestore();
+   }
+ });
+ 
+diff --git a/packages/server/src/server/agent/providers/claude/agent.ts b/packages/server/src/server/agent/providers/claude/agent.ts
+index 6516ff81b..d1a52e42e 100644
+--- a/packages/server/src/server/agent/providers/claude/agent.ts
++++ b/packages/server/src/server/agent/providers/claude/agent.ts
+@@ -3641,7 +3641,8 @@ class ClaudeAgentSession implements AgentSession {
+       // Dynamic mode switching can recreate the underlying Claude query. Keep the
+       // bypass launch capability available so later setPermissionMode("bypassPermissions")
+       // calls do not fail after a model/thinking/rewind-driven restart.
+-      allowDangerouslySkipPermissions: true,
++      // Claude Code rejects the bypass capability flag when running as root.
++      allowDangerouslySkipPermissions: process.getuid?.() !== 0,
+       agents: this.defaults?.agents,
+       canUseTool: this.handlePermissionRequest,
+       pathToClaudeCodeExecutable: claudeBinary,
+-- 
+2.43.0
+
