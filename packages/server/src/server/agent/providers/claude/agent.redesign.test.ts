@@ -1053,7 +1053,9 @@ test("captures Claude stderr in the turn failure diagnostic when stderr arrives 
   }
 });
 
-test("preserves bypass capability across query restarts triggered by thinking changes", async () => {
+test.each([0, 1000])("preserves UID %i bypass capability across query restarts", async (uid, { onTestFinished }) => {
+  const getuid = vi.spyOn(process, "getuid").mockReturnValue(uid);
+  onTestFinished(() => getuid.mockRestore());
   const capturedOptions: Array<{
     permissionMode?: string;
     allowDangerouslySkipPermissions?: boolean;
@@ -1091,11 +1093,11 @@ test("preserves bypass capability across query restarts triggered by thinking ch
     expect(capturedOptions).toHaveLength(2);
     expect(capturedOptions[0]).toMatchObject({
       permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
+      allowDangerouslySkipPermissions: uid !== 0,
     });
     expect(capturedOptions[1]).toMatchObject({
       permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
+      allowDangerouslySkipPermissions: uid !== 0,
       effort: "high",
     });
   } finally {
