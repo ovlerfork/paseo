@@ -32,6 +32,7 @@ The current series carries fork-owned source patches again:
 - `0014-feat-sidebar-project-groups.patch` adds named project groups to the sidebar, with shared membership persistence and daemon protocol support.
 - `0016-fix-docker-add-agy-acp-Docker-mod.patch` adds an `agy-acp` Docker Mod for the version-pinned `paseo-agy-acp` Antigravity ACP adapter, allows its `better-sqlite3` native build, and documents runtime-user login, home persistence, and explicit provider setup.
 - `0018-fix-about-label-release-and-dev-channels.patch` labels About update channels as Release and Dev across all locales using the existing stable/beta update settings. Release follows upstream stable releases; Dev follows upstream Beta prereleases.
+- `0024-feat-switch-workspace-tabs-with-the-mouse-wheel.patch` lets the mouse wheel over the desktop tab row switch to the previous or next tab in the same pane. Trackpad deltas accumulate behind a threshold and cooldown, the ends do not wrap, and horizontal gestures keep panning a row that overflows.
 
 Customized Dockerized Paseo is no longer workflow-only. The `Fork Release Build` workflow applies `patches/cur`, updates the generated `patched` branch, and source-builds the fork image with `docker/base/Dockerfile` before publishing to the fork GHCR namespace.
 
