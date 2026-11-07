@@ -57,6 +57,10 @@ import {
   WorkspaceTabIcon,
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-presentation";
+import {
+  createTabWheelState,
+  resolveWheelTabTarget,
+} from "@/screens/workspace/workspace-tab-wheel";
 import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
 import {
   buildWorkspaceDesktopTabActions,
@@ -1228,6 +1232,27 @@ function ResolvedWorkspaceDesktopTabsRow({
     }
   }, [layout.requiresHorizontalScrollFallback]);
 
+  const tabWheelStateRef = useRef(createTabWheelState());
+  const handleTabsWheel = useCallback(
+    (event: { deltaX: number; deltaY: number }) => {
+      const target = resolveWheelTabTarget({
+        state: tabWheelStateRef.current,
+        // Horizontal gestures keep panning an overflowing row instead of switching tabs.
+        deltaX: layout.requiresHorizontalScrollFallback ? 0 : event.deltaX,
+        deltaY: event.deltaY,
+        now: Date.now(),
+        tabIds: displayedTabs.map((item) => item.tab.tabId),
+        activeTabId: displayedTabs.find((item) => item.isActive)?.tab.tabId ?? null,
+      });
+      if (target) onNavigateTab(target);
+    },
+    [displayedTabs, layout.requiresHorizontalScrollFallback, onNavigateTab],
+  );
+  const tabsWheelProps = useMemo(
+    () => (isWeb ? ({ onWheel: handleTabsWheel } as object) : undefined),
+    [handleTabsWheel],
+  );
+
   const handleDragEnd = useCallback(
     (nextTabs: ResolvedWorkspaceDesktopTabRowItem[]) => {
       onReorderTabs(nextTabs.map((tab) => tab.tab));
@@ -1387,7 +1412,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         onPress={onExitFocusMode}
         onLayout={handleExitFocusModeLayout}
       />
-      <View style={styles.tabsScrollContainer}>
+      <View style={styles.tabsScrollContainer} {...tabsWheelProps}>
         <Animated.ScrollView
           ref={tabsScrollRef}
           horizontal
