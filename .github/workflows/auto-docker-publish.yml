@@ -781,7 +781,7 @@ jobs:
   build-macos:
     needs: prepare
     if: needs.prepare.outputs.publish_clients == 'true' && (needs.prepare.outputs.macos_needed == 'true' || needs.prepare.outputs.publish == 'false')
-    runs-on: macos-14
+    runs-on: ${{ startsWith(needs.prepare.outputs.version, '0.12.') && 'macos-14' || 'macos-15' }}
     permissions:
       contents: write
     defaults:
