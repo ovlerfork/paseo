@@ -5,7 +5,7 @@ Subject: [PATCH] fix(docker): set Codex agent thread cap
 
 
 diff --git a/docker/mods/codex/root-layer/etc/paseo-mods/codex/install b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
-index 7eab5fa..c0d1fd4 100755
+index 7eab5faa0..c0d1fd4c2 100755
 --- a/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
 +++ b/docker/mods/codex/root-layer/etc/paseo-mods/codex/install
 @@ -1,6 +1,58 @@

@@ -1,19 +1,12 @@
-From 6980c0d1b711ae88b8cc0e63ed71b9eda401c31c Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Thu, 1 Oct 2026 21:53:10 +0000
 Subject: [PATCH] Add Antigravity ACP Docker mod
 
----
- docker/mods/agy-acp/Dockerfile                | 25 ++++++++++++++
- .../root-layer/etc/paseo-mods/agy-acp/install | 34 +++++++++++++++++++
- docs/docker.md                                | 34 +++++++++++++++++++
- 3 files changed, 93 insertions(+)
- create mode 100644 docker/mods/agy-acp/Dockerfile
- create mode 100755 docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
 
 diff --git a/docker/mods/agy-acp/Dockerfile b/docker/mods/agy-acp/Dockerfile
 new file mode 100644
-index 0000000..ebb4b35
+index 000000000..ebb4b35bf
 --- /dev/null
 +++ b/docker/mods/agy-acp/Dockerfile
 @@ -0,0 +1,25 @@
@@ -44,7 +37,7 @@ index 0000000..ebb4b35
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install b/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
 new file mode 100755
-index 0000000..880eaa8
+index 000000000..880eaa83a
 --- /dev/null
 +++ b/docker/mods/agy-acp/root-layer/etc/paseo-mods/agy-acp/install
 @@ -0,0 +1,34 @@
@@ -83,7 +76,7 @@ index 0000000..880eaa8
 +
 +echo "[mod:agy-acp] done (run 'agy-acp --login' as the runtime user to set up the official kernel)."
 diff --git a/docs/docker.md b/docs/docker.md
-index b5464e6..45d7b67 100644
+index b5464e685..45d7b6778 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
 @@ -178,6 +178,40 @@ and the base image already ships Node, pnpm, and uv, so they need no mod.
@@ -127,6 +120,3 @@ index b5464e6..45d7b67 100644
  DevSpace installs as a tool mod rather than as an agent provider:
  
  | Mod tag    | Package              | Binary     |
--- 
-2.43.0
-

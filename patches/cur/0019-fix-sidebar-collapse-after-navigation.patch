@@ -1,16 +1,8 @@
-From 0738ae5b51d44b1202047db0f66f062ac1a334e2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Thu, 8 Oct 2026 20:57:59 +0000
 Subject: [PATCH] Keep viewed sidebar branches open until navigation
 
----
- .../components/sidebar/sidebar-model.test.tsx | 239 ++++++++++++++++++
- .../src/components/sidebar/sidebar-model.tsx  |  44 +++-
- .../sidebar-collapsed-sections-store/index.ts |  63 ++++-
- .../state.test.ts                             |  40 +++
- .../sidebar-collapsed-sections-store/state.ts |  17 +-
- 5 files changed, 385 insertions(+), 18 deletions(-)
- create mode 100644 packages/app/src/components/sidebar/sidebar-model.test.tsx
 
 diff --git a/packages/app/src/components/sidebar/sidebar-model.test.tsx b/packages/app/src/components/sidebar/sidebar-model.test.tsx
 new file mode 100644
@@ -258,7 +250,7 @@ index 000000000..a0a5d16c7
 +  hidden.unmount();
 +});
 diff --git a/packages/app/src/components/sidebar/sidebar-model.tsx b/packages/app/src/components/sidebar/sidebar-model.tsx
-index 4a933f03e..6f4f792bc 100644
+index 4a933f03e..14e0f717f 100644
 --- a/packages/app/src/components/sidebar/sidebar-model.tsx
 +++ b/packages/app/src/components/sidebar/sidebar-model.tsx
 @@ -28,6 +28,9 @@ import {
@@ -271,7 +263,9 @@ index 4a933f03e..6f4f792bc 100644
  import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
  import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
  import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
-@@ -77,4 +80,14 @@ export function SidebarModelProvider({
+@@ -72,6 +75,16 @@ export function SidebarModelProvider({
+   const modelActive = active !== false || keyboardNavigationActive;
+   const list = useSidebarWorkspacesList({ enabled: modelActive });
    const showBackground = useSidebarViewStore((state) => state.showBackground);
 +  const selection = useActiveWorkspaceSelection();
 +  const selectedWorkspaceKey = selection ? `${selection.serverId}:${selection.workspaceId}` : null;

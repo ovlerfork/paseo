@@ -5,10 +5,10 @@ Subject: [PATCH] fix(docker): add optional ssh runtime
 
 
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
-index af2eeba1f..ce5692af7 100644
+index 9a8583a0f..2b8b30681 100644
 --- a/docker/base/Dockerfile
 +++ b/docker/base/Dockerfile
-@@ -79,6 +79,7 @@ RUN set -eux; \
+@@ -80,6 +80,7 @@ RUN set -eux; \
        lbzip2 \
        less \
        openssh-client \
@@ -16,7 +16,7 @@ index af2eeba1f..ce5692af7 100644
        pipx \
        procps \
        python3-venv \
-@@ -177,7 +178,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
+@@ -178,7 +179,7 @@ RUN chmod +x /usr/local/bin/paseo-docker-entrypoint
  
  WORKDIR /workspace
  
@@ -126,10 +126,10 @@ index 1f1d5cd53..5657d95f2 100644
 +#   paseo_ssh_authorized_keys:
 +#     file: ./paseo_ssh_authorized_keys.pub
 diff --git a/docs/docker.md b/docs/docker.md
-index 268331303..f02bb8512 100644
+index 058dee929..fdd162da6 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -68,6 +68,49 @@ services:
+@@ -70,6 +70,49 @@ services:
        - ./workspace:/workspace
  ```
  
@@ -179,7 +179,7 @@ index 268331303..f02bb8512 100644
  ## Installing Agents
  
  The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
-@@ -120,11 +163,14 @@ or `compose.environment`; Paseo passes them to launched agents.
+@@ -122,11 +165,14 @@ or `compose.environment`; Paseo passes them to launched agents.
  
  The image defaults:
  

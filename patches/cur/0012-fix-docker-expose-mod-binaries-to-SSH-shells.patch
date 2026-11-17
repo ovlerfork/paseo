@@ -5,10 +5,10 @@ Subject: [PATCH] fix(docker): expose mod binaries to SSH shells
 
 
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
-index 4062e75..d884887 100644
+index cc3184feb..13ef12a84 100644
 --- a/docker/base/Dockerfile
 +++ b/docker/base/Dockerfile
-@@ -221,7 +221,10 @@ RUN set -eux; \
+@@ -222,7 +222,10 @@ RUN set -eux; \
      fi
  
  COPY docker/base/rootfs/ /
@@ -22,7 +22,7 @@ index 4062e75..d884887 100644
  
 diff --git a/docker/base/rootfs/etc/profile.d/paseo-path.sh b/docker/base/rootfs/etc/profile.d/paseo-path.sh
 new file mode 100644
-index 0000000..4d2343d
+index 000000000..4d2343d80
 --- /dev/null
 +++ b/docker/base/rootfs/etc/profile.d/paseo-path.sh
 @@ -0,0 +1,10 @@
@@ -37,10 +37,10 @@ index 0000000..4d2343d
 +esac
 +export PATH
 diff --git a/docs/docker.md b/docs/docker.md
-index 74c51f1..089616d 100644
+index 0ad81a7a6..b5464e685 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -143,6 +143,11 @@ alongside the daemon without blocking it. A start hook should exec a
+@@ -145,6 +145,11 @@ alongside the daemon without blocking it. A start hook should exec a
  long-running process and exit 0 when the service is not configured or not
  wanted; a failing start hook is logged and does not stop the daemon.
  

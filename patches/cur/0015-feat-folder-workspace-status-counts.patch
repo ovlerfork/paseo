@@ -1,21 +1,16 @@
-From d88a5cd442aa3acbcfda31a0e91b3836535cec95 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Thu, 1 Oct 2026 19:19:30 +0000
 Subject: [PATCH] Show workspace status counts in sidebar project folders
 
----
- .../src/components/sidebar-workspace-list.tsx | 54 +++++++++++++++++--
- .../sidebar-project-group-counts.test.ts      | 48 +++++++++++++++++
- .../src/utils/sidebar-project-group-counts.ts | 27 ++++++++++
- 3 files changed, 124 insertions(+), 5 deletions(-)
- create mode 100644 packages/app/src/utils/sidebar-project-group-counts.test.ts
- create mode 100644 packages/app/src/utils/sidebar-project-group-counts.ts
 
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index 5046892b7..8480ef18b 100644
+index 33efee051..1ec7e16ac 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -165,3 +165,7 @@
+@@ -163,6 +163,10 @@ import type { HostBadgeModel } from "@/hosts/appearance";
+ import { useHostBadges } from "@/hosts/use-host-badges";
+ import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
  import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
 +import {
 +  countProjectGroupWorkspaces,
@@ -23,6 +18,7 @@ index 5046892b7..8480ef18b 100644
 +} from "@/utils/sidebar-project-group-counts";
  import { useSidebarModel } from "@/components/sidebar/sidebar-model";
  import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
+ import { bySizing } from "@/components/ui/control-geometry";
 @@ -258,7 +262,7 @@ interface SidebarWorkspaceListProps {
  
  interface ProjectGroupHeaderProps {
@@ -70,7 +66,7 @@ index 5046892b7..8480ef18b 100644
        </Pressable>
        <Tooltip delayDuration={300}>
          <TooltipTrigger asChild>
-@@ -2500,6 +2524,19 @@ function ProjectModeList({
+@@ -2504,6 +2528,19 @@ function ProjectModeList({
      }
      return { groups, ungrouped };
    }, [unpinnedProjects]);
@@ -90,7 +86,7 @@ index 5046892b7..8480ef18b 100644
    const [collapsedGroupNames, setCollapsedGroupNames] = useState<Set<string>>(() => new Set());
    const toggleGroup = useCallback((groupName: string) => {
      setCollapsedGroupNames((current) => {
-@@ -2594,7 +2631,7 @@ function ProjectModeList({
+@@ -2598,7 +2635,7 @@ function ProjectModeList({
            <View key={groupName} style={styles.projectGroupBlock}>
              <ProjectGroupHeader
                groupName={groupName}
@@ -99,7 +95,7 @@ index 5046892b7..8480ef18b 100644
                collapsed={collapsedGroupNames.has(groupName)}
                onToggle={toggleGroup}
                onEdit={editProjectGroup}
-@@ -2752,7 +2789,14 @@ const styles = StyleSheet.create((theme) => ({
+@@ -2758,7 +2795,14 @@ const styles = StyleSheet.create((theme) => ({
      flex: 1,
      minWidth: 0,
    },

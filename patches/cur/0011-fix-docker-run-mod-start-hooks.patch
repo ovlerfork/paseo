@@ -5,7 +5,7 @@ Subject: [PATCH] fix(docker): run mod start hooks
 
 
 diff --git a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
-index 7866a73..b75e777 100644
+index 7866a730f..b75e777a1 100644
 --- a/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
 +++ b/docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint
 @@ -91,6 +91,23 @@ apply_docker_mods() {
@@ -42,7 +42,7 @@ index 7866a73..b75e777 100644
  if [[ "$#" -gt 0 ]]; then
 diff --git a/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/start b/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/start
 new file mode 100755
-index 0000000..0bd60d5
+index 000000000..0bd60d5a1
 --- /dev/null
 +++ b/docker/mods/devspace/root-layer/etc/paseo-mods/devspace/start
 @@ -0,0 +1,29 @@
@@ -76,10 +76,10 @@ index 0000000..0bd60d5
 +echo "[mod:devspace] starting devspace serve"
 +exec devspace serve
 diff --git a/docs/docker.md b/docs/docker.md
-index 335433a..74c51f1 100644
+index 36226d817..0ad81a7a6 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -136,6 +136,13 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
+@@ -138,6 +138,13 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
  do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
  starting the daemon.
  
@@ -93,7 +93,7 @@ index 335433a..74c51f1 100644
  Native provider mods:
  
  | Mod tag       | Package                           | Binary     |
-@@ -173,15 +180,20 @@ DevSpace installs as a tool mod rather than as an agent provider:
+@@ -175,15 +182,20 @@ DevSpace installs as a tool mod rather than as an agent provider:
  It serves a self-hosted MCP endpoint that exposes the container workspace to MCP
  clients such as ChatGPT. DevSpace keeps durable settings and auth in
  `~/.devspace`, inside the persistent `/home/paseo` volume, so the owner password

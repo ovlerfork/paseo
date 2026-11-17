@@ -5,10 +5,10 @@ Subject: [PATCH] feat: switch workspace tabs with the mouse wheel
 
 
 diff --git a/packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx b/packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx
-index f7645ac1..87691fff 100644
+index 3c138087c..021e754b4 100644
 --- a/packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx
 +++ b/packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx
-@@ -57,6 +57,10 @@ import {
+@@ -59,6 +59,10 @@ import {
    WorkspaceTabIcon,
    type WorkspaceTabPresentation,
  } from "@/screens/workspace/workspace-tab-presentation";
@@ -19,7 +19,7 @@ index f7645ac1..87691fff 100644
  import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
  import {
    buildWorkspaceDesktopTabActions,
-@@ -1228,6 +1232,27 @@ function ResolvedWorkspaceDesktopTabsRow({
+@@ -1285,6 +1289,27 @@ function ResolvedWorkspaceDesktopTabsRow({
      }
    }, [layout.requiresHorizontalScrollFallback]);
  
@@ -47,7 +47,7 @@ index f7645ac1..87691fff 100644
    const handleDragEnd = useCallback(
      (nextTabs: ResolvedWorkspaceDesktopTabRowItem[]) => {
        onReorderTabs(nextTabs.map((tab) => tab.tab));
-@@ -1387,7 +1412,7 @@ function ResolvedWorkspaceDesktopTabsRow({
+@@ -1427,7 +1452,7 @@ function ResolvedWorkspaceDesktopTabsRow({
          onPress={onExitFocusMode}
          onLayout={handleExitFocusModeLayout}
        />
@@ -58,7 +58,7 @@ index f7645ac1..87691fff 100644
            horizontal
 diff --git a/packages/app/src/screens/workspace/workspace-tab-wheel.test.ts b/packages/app/src/screens/workspace/workspace-tab-wheel.test.ts
 new file mode 100644
-index 00000000..ccd22984
+index 000000000..ccd229848
 --- /dev/null
 +++ b/packages/app/src/screens/workspace/workspace-tab-wheel.test.ts
 @@ -0,0 +1,81 @@
@@ -145,7 +145,7 @@ index 00000000..ccd22984
 +});
 diff --git a/packages/app/src/screens/workspace/workspace-tab-wheel.ts b/packages/app/src/screens/workspace/workspace-tab-wheel.ts
 new file mode 100644
-index 00000000..d572b8c4
+index 000000000..d572b8c4e
 --- /dev/null
 +++ b/packages/app/src/screens/workspace/workspace-tab-wheel.ts
 @@ -0,0 +1,47 @@

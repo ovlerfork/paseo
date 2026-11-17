@@ -6,7 +6,7 @@ Subject: [PATCH] fix(docker): add ACP provider catalog mods
 
 diff --git a/docker/mods/amp-acp/Dockerfile b/docker/mods/amp-acp/Dockerfile
 new file mode 100644
-index 0000000..d4e67c5
+index 000000000..d4e67c505
 --- /dev/null
 +++ b/docker/mods/amp-acp/Dockerfile
 @@ -0,0 +1,25 @@
@@ -37,7 +37,7 @@ index 0000000..d4e67c5
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install b/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install
 new file mode 100755
-index 0000000..0c46d7c
+index 000000000..0c46d7c30
 --- /dev/null
 +++ b/docker/mods/amp-acp/root-layer/etc/paseo-mods/amp-acp/install
 @@ -0,0 +1,38 @@
@@ -81,7 +81,7 @@ index 0000000..0c46d7c
 +echo "[mod:amp-acp] done (${AMP_ACP_BIN}, ${AMP_BIN})"
 diff --git a/docker/mods/codebuddy/Dockerfile b/docker/mods/codebuddy/Dockerfile
 new file mode 100644
-index 0000000..0c7ce81
+index 000000000..0c7ce811b
 --- /dev/null
 +++ b/docker/mods/codebuddy/Dockerfile
 @@ -0,0 +1,25 @@
@@ -112,7 +112,7 @@ index 0000000..0c7ce81
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install b/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install
 new file mode 100755
-index 0000000..f309a48
+index 000000000..f309a48b7
 --- /dev/null
 +++ b/docker/mods/codebuddy/root-layer/etc/paseo-mods/codebuddy/install
 @@ -0,0 +1,25 @@
@@ -143,7 +143,7 @@ index 0000000..f309a48
 +echo "[mod:codebuddy] done (${CODEBUDDY_BIN})"
 diff --git a/docker/mods/codewhale/Dockerfile b/docker/mods/codewhale/Dockerfile
 new file mode 100644
-index 0000000..1542e1c
+index 000000000..1542e1ccd
 --- /dev/null
 +++ b/docker/mods/codewhale/Dockerfile
 @@ -0,0 +1,25 @@
@@ -174,7 +174,7 @@ index 0000000..1542e1c
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install b/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install
 new file mode 100755
-index 0000000..60d3a7a
+index 000000000..60d3a7abc
 --- /dev/null
 +++ b/docker/mods/codewhale/root-layer/etc/paseo-mods/codewhale/install
 @@ -0,0 +1,28 @@
@@ -208,7 +208,7 @@ index 0000000..60d3a7a
 +echo "[mod:codewhale] done (${CODEWHALE_BIN})"
 diff --git a/docker/mods/junie/Dockerfile b/docker/mods/junie/Dockerfile
 new file mode 100644
-index 0000000..84b8769
+index 000000000..84b8769c4
 --- /dev/null
 +++ b/docker/mods/junie/Dockerfile
 @@ -0,0 +1,25 @@
@@ -239,7 +239,7 @@ index 0000000..84b8769
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/junie/root-layer/etc/paseo-mods/junie/install b/docker/mods/junie/root-layer/etc/paseo-mods/junie/install
 new file mode 100755
-index 0000000..d2df8dd
+index 000000000..d2df8ddf4
 --- /dev/null
 +++ b/docker/mods/junie/root-layer/etc/paseo-mods/junie/install
 @@ -0,0 +1,27 @@
@@ -272,7 +272,7 @@ index 0000000..d2df8dd
 +echo "[mod:junie] done (${JUNIE_BIN})"
 diff --git a/docker/mods/kilo/Dockerfile b/docker/mods/kilo/Dockerfile
 new file mode 100644
-index 0000000..941112b
+index 000000000..941112b19
 --- /dev/null
 +++ b/docker/mods/kilo/Dockerfile
 @@ -0,0 +1,25 @@
@@ -303,7 +303,7 @@ index 0000000..941112b
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install b/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install
 new file mode 100755
-index 0000000..c88e5df
+index 000000000..c88e5df18
 --- /dev/null
 +++ b/docker/mods/kilo/root-layer/etc/paseo-mods/kilo/install
 @@ -0,0 +1,27 @@
@@ -336,7 +336,7 @@ index 0000000..c88e5df
 +echo "[mod:kilo] done (${KILO_BIN})"
 diff --git a/docker/mods/kimi/Dockerfile b/docker/mods/kimi/Dockerfile
 new file mode 100644
-index 0000000..b371656
+index 000000000..b371656a9
 --- /dev/null
 +++ b/docker/mods/kimi/Dockerfile
 @@ -0,0 +1,25 @@
@@ -367,7 +367,7 @@ index 0000000..b371656
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install b/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install
 new file mode 100755
-index 0000000..9b29239
+index 000000000..9b2923942
 --- /dev/null
 +++ b/docker/mods/kimi/root-layer/etc/paseo-mods/kimi/install
 @@ -0,0 +1,27 @@
@@ -399,10 +399,10 @@ index 0000000..9b29239
 +}
 +echo "[mod:kimi] done (${KIMI_BIN})"
 diff --git a/docs/docker.md b/docs/docker.md
-index cf64543..e20bc2a 100644
+index 194773242..15e80b995 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -136,7 +136,7 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
+@@ -138,7 +138,7 @@ daemon. A configured mod failure stops startup by default so missing agent CLIs
  do not go unnoticed. Set `DOCKER_MODS_STRICT=false` to log mod failures and keep
  starting the daemon.
  
@@ -411,7 +411,7 @@ index cf64543..e20bc2a 100644
  
  | Mod tag       | Package                           | Binary     |
  | ------------- | --------------------------------- | ---------- |
-@@ -147,6 +147,23 @@ Available mod tags:
+@@ -149,6 +149,23 @@ Available mod tags:
  | `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |
  | `omp`         | `@oh-my-pi/pi-coding-agent`       | `omp`      |
  

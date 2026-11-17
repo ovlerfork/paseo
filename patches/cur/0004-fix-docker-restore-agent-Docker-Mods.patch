@@ -31,10 +31,10 @@ index 18092b2ee..233183e4b 100644
  
  See [docs/docker.md](../docs/docker.md) for Compose, reverse proxy, security,
 diff --git a/docker/base/Dockerfile b/docker/base/Dockerfile
-index ce5692af7..584ea7a0f 100644
+index 2b8b30681..1c788ae6a 100644
 --- a/docker/base/Dockerfile
 +++ b/docker/base/Dockerfile
-@@ -49,8 +49,10 @@ ENV HOME=/home/paseo \
+@@ -50,8 +50,10 @@ ENV HOME=/home/paseo \
      XDG_DATA_HOME=/home/paseo/.local/share \
      XDG_STATE_HOME=/home/paseo/.local/state \
      XDG_CACHE_HOME=/home/paseo/.cache \
@@ -45,7 +45,7 @@ index ce5692af7..584ea7a0f 100644
  
  RUN set -eux; \
      case "${PASEO_RUNTIME_USER}" in paseo|root) ;; *) echo "Unsupported PASEO_RUNTIME_USER=${PASEO_RUNTIME_USER}" >&2; exit 1 ;; esac; \
-@@ -70,22 +72,34 @@ RUN set -eux; \
+@@ -71,22 +73,34 @@ RUN set -eux; \
        bash \
        bash-completion \
        bubblewrap \
@@ -80,7 +80,7 @@ index ce5692af7..584ea7a0f 100644
        unzip \
        vim-tiny \
        xz-utils \
-@@ -103,6 +116,7 @@ RUN set -eux; \
+@@ -104,6 +118,7 @@ RUN set -eux; \
      if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then \
        ln -s /usr/bin/fdfind /usr/local/bin/fd; \
      fi; \
@@ -88,7 +88,7 @@ index ce5692af7..584ea7a0f 100644
      npm install -g "npm@${NPM_VERSION}" "corepack@${COREPACK_VERSION}"; \
      corepack enable; \
      corepack install -g "pnpm@${PNPM_VERSION}"; \
-@@ -123,8 +137,13 @@ RUN set -eux; \
+@@ -124,8 +139,13 @@ RUN set -eux; \
      corepack --version; \
      fish --version; \
      gh --version | head -n 1; \
@@ -102,7 +102,7 @@ index ce5692af7..584ea7a0f 100644
      uv --version; \
      rm -rf /var/lib/apt/lists/*
  
-@@ -174,7 +192,7 @@ RUN set -eux; \
+@@ -175,7 +195,7 @@ RUN set -eux; \
      fi
  
  COPY docker/base/rootfs/ /
@@ -587,10 +587,10 @@ index 000000000..a1be15521
 +}
 +echo "[mod:pi] done (${PI_BIN})"
 diff --git a/docs/docker.md b/docs/docker.md
-index f02bb8512..2acd20388 100644
+index fdd162da6..f74a19056 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -117,29 +117,53 @@ The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
+@@ -119,29 +119,53 @@ The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
  other agent CLIs. That keeps the default image small and avoids coupling Paseo
  releases to third-party agent release cycles.
  

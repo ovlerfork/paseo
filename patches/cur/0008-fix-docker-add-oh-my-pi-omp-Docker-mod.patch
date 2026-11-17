@@ -6,7 +6,7 @@ Subject: [PATCH] fix(docker): add oh-my-pi omp Docker mod
 
 diff --git a/docker/mods/omp/Dockerfile b/docker/mods/omp/Dockerfile
 new file mode 100644
-index 0000000..85a95aa
+index 000000000..85a95aa25
 --- /dev/null
 +++ b/docker/mods/omp/Dockerfile
 @@ -0,0 +1,25 @@
@@ -37,7 +37,7 @@ index 0000000..85a95aa
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/omp/root-layer/etc/paseo-mods/omp/install b/docker/mods/omp/root-layer/etc/paseo-mods/omp/install
 new file mode 100755
-index 0000000..61aff2d
+index 000000000..61aff2d68
 --- /dev/null
 +++ b/docker/mods/omp/root-layer/etc/paseo-mods/omp/install
 @@ -0,0 +1,53 @@
@@ -95,10 +95,10 @@ index 0000000..61aff2d
 +}
 +echo "[mod:omp] done (${OMP_BIN}, ${OMP_VERSION_OUTPUT})"
 diff --git a/docs/docker.md b/docs/docker.md
-index 2acd203..cf64543 100644
+index f74a19056..194773242 100644
 --- a/docs/docker.md
 +++ b/docs/docker.md
-@@ -113,9 +113,9 @@ requires a key.
+@@ -115,9 +115,9 @@ requires a key.
  
  ## Installing Agents
  
@@ -111,7 +111,7 @@ index 2acd203..cf64543 100644
  
  Use Docker Mods to install agent CLIs at container startup:
  
-@@ -145,12 +145,17 @@ Available mod tags:
+@@ -147,12 +147,17 @@ Available mod tags:
  | `copilot`     | `@github/copilot`                 | `copilot`  |
  | `opencode`    | `opencode-ai`                     | `opencode` |
  | `pi`          | `@earendil-works/pi-coding-agent` | `pi`       |

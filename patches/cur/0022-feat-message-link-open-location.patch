@@ -5,17 +5,19 @@ Subject: [PATCH] Choose where AI message links open
 
 
 diff --git a/packages/app/src/assistant-file-links/provider.tsx b/packages/app/src/assistant-file-links/provider.tsx
-index 967e1c32e..43219cc4e 100644
+index 935683bb0..a4354b10d 100644
 --- a/packages/app/src/assistant-file-links/provider.tsx
 +++ b/packages/app/src/assistant-file-links/provider.tsx
-@@ -25,5 +25,6 @@ export interface AssistantFileLinkResolverConfig {
+@@ -25,6 +25,7 @@ export interface AssistantFileLinkResolverConfig {
+   relativePathBase?: string;
    onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
    toast?: ToastApi | null;
 +  onOpenUrlInBrowserTab?: (url: string) => void;
  }
  
  export interface AssistantFileLinkResolverProviderProps extends AssistantFileLinkResolverConfig {
-@@ -45,7 +46,9 @@ export function AssistantFileLinkResolverProvider({
+@@ -58,8 +59,10 @@ export function AssistantFileLinkResolverProvider({
+   relativePathBase,
    onOpenWorkspaceFile,
    toast,
 +  onOpenUrlInBrowserTab,
@@ -25,7 +27,7 @@ index 967e1c32e..43219cc4e 100644
    const configRef = useRef<AssistantFileLinkResolverConfig>({
      client,
      serverId,
-@@ -65,6 +68,8 @@ export function AssistantFileLinkResolverProvider({
+@@ -87,6 +90,8 @@ export function AssistantFileLinkResolverProvider({
      return { entries: result.entries, error: result.error };
    }, []);
  
@@ -35,7 +37,7 @@ index 967e1c32e..43219cc4e 100644
      () => ({ configRef, getDirectorySuggestions }),
      [getDirectorySuggestions],
 diff --git a/packages/app/src/components/markdown/renderers.web.tsx b/packages/app/src/components/markdown/renderers.web.tsx
-index 1d05b3b60..2f854a435 100644
+index dd1b23f09..9db2e2f3e 100644
 --- a/packages/app/src/components/markdown/renderers.web.tsx
 +++ b/packages/app/src/components/markdown/renderers.web.tsx
 @@ -1,5 +1,12 @@
@@ -52,7 +54,7 @@ index 1d05b3b60..2f854a435 100644
  import type {
    CodeBlockRendererProps,
    LinkRendererProps,
-@@ -43,10 +50,18 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
+@@ -50,11 +57,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
      }),
      [anchorProps.style, hovered],
    );
@@ -66,16 +68,19 @@ index 1d05b3b60..2f854a435 100644
    const anchor = (
      <a
        {...anchorProps}
+       href={forgeUrl ?? anchorProps.href}
        style={anchorStyle}
 +      onAuxClick={handleAuxClick}
        onMouseEnter={handleMouseEnter}
        onMouseLeave={handleMouseLeave}
      >
 diff --git a/packages/app/src/components/message.tsx b/packages/app/src/components/message.tsx
-index d5a224450..1a6cf8808 100644
+index f119e55e9..afa8fa74c 100644
 --- a/packages/app/src/components/message.tsx
 +++ b/packages/app/src/components/message.tsx
-@@ -1,4 +1,8 @@
+@@ -1,6 +1,10 @@
+ import { useDisclosureHold } from "@/agent-stream/disclosure";
+ import { MessagePreview, MessageSender } from "@/components/user-message";
  import { useStableEvent } from "@/hooks/use-stable-event";
 +import { useAssistantFileLinkEnvironment } from "@/assistant-file-links";
 +import { useAppSettings } from "@/hooks/use-settings";
@@ -84,7 +89,7 @@ index d5a224450..1a6cf8808 100644
  import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
  import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
  import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
-@@ -14,7 +18,7 @@ import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mut
+@@ -16,7 +20,7 @@ import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mut
  import { TaskListRow } from "@/components/task-list-row";
  import { LoadingSpinner } from "@/components/ui/loading-spinner";
  import { useIsCompactFormFactor } from "@/constants/layout";
@@ -93,7 +98,7 @@ index d5a224450..1a6cf8808 100644
  import { useRevealedText, type MarkdownPhase } from "@/hooks/use-revealed-text";
  import { ICON_SIZE, type Theme } from "@/styles/theme";
  import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-@@ -1140,6 +1144,20 @@ export const AssistantMessage = memo(function AssistantMessage({
+@@ -1193,6 +1197,20 @@ export const AssistantMessage = memo(function AssistantMessage({
    phase,
  }: AssistantMessageProps) {
    const { t } = useTranslation();
@@ -114,7 +119,7 @@ index d5a224450..1a6cf8808 100644
    const renderedMessage = useMemo(
      () =>
        renderFullContent ? { text: message, capped: false } : capAssistantMessageForRender(message),
-@@ -1189,6 +1207,7 @@ export const AssistantMessage = memo(function AssistantMessage({
+@@ -1243,6 +1261,7 @@ export const AssistantMessage = memo(function AssistantMessage({
          streaming={phase !== "complete" || revealedMessage.length < renderedMessage.text.length}
          client={client}
          workspaceRoot={workspaceRoot}
@@ -123,10 +128,10 @@ index d5a224450..1a6cf8808 100644
        />
        {fullMessageByteLength !== null ? (
 diff --git a/packages/app/src/hooks/use-settings/storage.test.ts b/packages/app/src/hooks/use-settings/storage.test.ts
-index 6d9c8d4c7..6639e87d0 100644
+index 8f426f9f2..282fc1141 100644
 --- a/packages/app/src/hooks/use-settings/storage.test.ts
 +++ b/packages/app/src/hooks/use-settings/storage.test.ts
-@@ -53,6 +53,24 @@ describe("loadAppSettingsFromStorage", () => {
+@@ -80,6 +80,24 @@ describe("loadAppSettingsFromStorage", () => {
      expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
    });
  
@@ -152,22 +157,26 @@ index 6d9c8d4c7..6639e87d0 100644
      const stored = {
        theme: "dark",
 diff --git a/packages/app/src/hooks/use-settings/storage.ts b/packages/app/src/hooks/use-settings/storage.ts
-index 54ee6b10b..d2c5c5851 100644
+index f04b7b6d9..1ef720905 100644
 --- a/packages/app/src/hooks/use-settings/storage.ts
 +++ b/packages/app/src/hooks/use-settings/storage.ts
-@@ -80,4 +80,5 @@ export interface AppSettings {
+@@ -83,6 +83,7 @@ export interface AppSettings {
    language: AppLanguage;
    sendBehavior: SendBehavior;
    serviceUrlBehavior: ServiceUrlBehavior;
 +  messageLinkOpenLocation: "external" | "in-app";
    terminalScrollbackLines: number;
-@@ -140,4 +141,5 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+   uiFontFamily: string; // "" = platform default UI stack
+   monoFontFamily: string; // "" = platform default mono stack
+@@ -146,6 +147,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
    language: "system",
    sendBehavior: "steer",
    serviceUrlBehavior: "ask",
 +  messageLinkOpenLocation: "external",
    terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
-@@ -218,6 +220,7 @@ const StoredAppSettingsSchema = z
+   uiFontFamily: "",
+   monoFontFamily: "",
+@@ -227,6 +229,7 @@ const StoredAppSettingsSchema = z
        .catch("system"),
      sendBehavior: z.enum(["interrupt", "steer", "queue"]).catch("steer"),
      serviceUrlBehavior: z.enum(["ask", "in-app", "external"]).catch("ask"),
@@ -176,10 +185,10 @@ index 54ee6b10b..d2c5c5851 100644
        MIN_TERMINAL_SCROLLBACK_LINES,
        MAX_TERMINAL_SCROLLBACK_LINES,
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index 9bb046003..287ad005e 100644
+index 47b5f1178..e0ac8fa40 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -2125,6 +2125,11 @@ export const en = {
+@@ -2362,6 +2362,11 @@ export const en = {
            side: "On the side",
            explorer: "Explorer sidebar",
          },
@@ -192,10 +201,10 @@ index 9bb046003..287ad005e 100644
            explorerFiles: {
              label: "Clicking a file in the Explorer sidebar",
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index ca221d7d3..a204eb0c5 100644
+index 7a9c947f6..627aad9c3 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -2070,7 +2070,17 @@ export const zhCN: TranslationResources = {
+@@ -2303,7 +2303,17 @@ export const zhCN: TranslationResources = {
        diagnostics: "诊断",
        about: "关于",
      },
@@ -272,10 +281,10 @@ index fddc3e1f4..2b75cfbea 100644
      </SettingsSection>
    );
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index 5c3e1560e..980732958 100644
+index 0c30fb5bf..34e3600f9 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -3748,6 +3748,7 @@ function WorkspaceScreenContent({
+@@ -3903,6 +3903,7 @@ function WorkspaceScreenContent({
          serverId={normalizedServerId}
          workspaceRoot={workspaceDirectory ?? undefined}
          onOpenWorkspaceFile={openMarkdownPath}

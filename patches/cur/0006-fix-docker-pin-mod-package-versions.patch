@@ -35,7 +35,7 @@ index 0c908e14b..f287d0d49 100644
  COPY root-layer/ /
 +COPY --from=meta /root-layer/ /
 diff --git a/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
-index 0f2251947..5d0656662 100755
+index 0f2251947..e55525db7 100755
 --- a/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
 +++ b/docker/mods/claude-code/root-layer/etc/paseo-mods/claude-code/install
 @@ -6,6 +6,15 @@ if command -v claude >/dev/null 2>&1; then

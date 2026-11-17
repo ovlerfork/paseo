@@ -221,10 +221,10 @@ index 000000000..d93b7d1f2
 +  queryClient.clear();
 +});
 diff --git a/packages/app/src/contexts/session-context.tsx b/packages/app/src/contexts/session-context.tsx
-index 430e4ade7..097ce3017 100644
+index a17f7e0a3..a95aabfe1 100644
 --- a/packages/app/src/contexts/session-context.tsx
 +++ b/packages/app/src/contexts/session-context.tsx
-@@ -480,6 +480,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
+@@ -447,6 +447,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
      viewedTimelineSyncRef.current = sync;
      setViewedTimelineSync(serverId, sync);
      sync.setActive(getIsAppVisible(appStateRef.current));

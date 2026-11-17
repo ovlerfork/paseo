@@ -1,49 +1,23 @@
-From ce3b905d9bffc1b298b99116d6ae11798d4e511d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ovler <44089074+Ovler-Young@users.noreply.github.com>
 Date: Thu, 1 Oct 2026 17:09:55 +0000
 Subject: [PATCH] Add searchable shared project groups to the sidebar
 
----
- packages/app/src/components/left-sidebar.tsx | 37 +-
- .../components/project-groups-sheet.test.tsx  | 241 ++++++++++
- .../src/components/project-groups-sheet.tsx   | 417 ++++++++++++++++++
- .../src/components/sidebar-workspace-list.tsx | 250 +-
- .../hooks/sidebar-workspaces-view-model.ts    |   3 +
- .../app/src/projects/host-project-model.ts    |   4 +
- .../src/projects/workspace-structure.test.ts  |  30 ++
- .../app/src/projects/workspace-structure.ts   |  12 +
- .../app/src/runtime/directory-sync/index.ts   |   1 +
- .../directory-sync/workspace-replica.test.ts  |   3 +
- .../directory-sync/workspace-replica.ts       |   1 +
- .../app/src/runtime/replica-cache/index.ts    |   4 +
- packages/app/src/stores/session-store.ts      |   4 +
- packages/client/src/daemon-client.ts          |  15 +
- packages/protocol/src/messages.test.ts        |  14 +
- packages/protocol/src/messages.ts             |  27 ++
- .../authorization/operation-permissions.ts    |   2 +
- packages/server/src/server/session.test.ts    |   2 +
- packages/server/src/server/session.ts         |  94 +++-
- .../src/server/session.workspaces.test.ts     |  68 +++
- .../server/src/server/websocket-server.ts     |   3 +
- .../server/src/server/workspace-directory.ts  |   1 +
- .../src/server/workspace-registry.test.ts     |  30 ++
- .../server/src/server/workspace-registry.ts   |   8 +
- 24 files changed, 1222 insertions(+), 49 deletions(-)
- create mode 100644 packages/app/src/components/project-groups-sheet.test.tsx
- create mode 100644 packages/app/src/components/project-groups-sheet.tsx
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index b4b54db3d..f827d8f5b 100644
+index 55874b0fb..ffe38f26b 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -2,4 +2,5 @@
- import { router } from "expo-router";
+@@ -1,5 +1,7 @@
+ import { SidebarViewSlot } from "@/plugins/sidebar-view";
+ import { useAddHost } from "@/hosts/add-host";
++import { router } from "expo-router";
 +import { withUnistyles } from "react-native-unistyles";
  import {
    CircleGauge,
    FolderPlus,
-@@ -80,6 +81,8 @@ import { SidebarWorkspaceList } from "./sidebar-workspace-list";
- type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
+@@ -114,6 +116,8 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
+ const FOOTER_ROW_PADDING = SPACING[2];
  
  const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
 +const ThemedFolderPlus = withUnistyles(FolderPlus);
@@ -51,7 +25,7 @@ index b4b54db3d..f827d8f5b 100644
  
  interface SidebarSharedProps {
    theme: SidebarTheme;
-@@ -836,9 +846,28 @@ function DesktopSidebar({
+@@ -950,9 +954,28 @@ function DesktopSidebar({
    );
  }
  
@@ -81,7 +55,7 @@ index b4b54db3d..f827d8f5b 100644
        <Tooltip delayDuration={300}>
          <TooltipTrigger asChild>
            <View>
-@@ -853,9 +882,9 @@ function WorkspacesSectionHeader() {
+@@ -967,9 +990,9 @@ function WorkspacesSectionHeader() {
    );
  }
  
@@ -94,7 +68,9 @@ index b4b54db3d..f827d8f5b 100644
  
  // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
  // avoid the "Unable to find node on an unmounted component" crash when Unistyles
-@@ -870,4 +892,11 @@
+@@ -982,6 +1005,13 @@ const staticStyles = RNStyleSheet.create({
+ });
+ 
  const styles = StyleSheet.create((theme) => ({
 +  workspacesSectionActionButton: {
 +    width: 28,
@@ -103,8 +79,8 @@ index b4b54db3d..f827d8f5b 100644
 +    justifyContent: "center",
 +    borderRadius: theme.borderRadius.lg,
 +  },
+   // The rows start flush: the chrome row, drag strip, or top band above them gives the inset.
    sidebarHeaderGroup: {
-     paddingTop: theme.spacing[2],
      gap: 2,
 diff --git a/packages/app/src/components/project-groups-sheet.test.tsx b/packages/app/src/components/project-groups-sheet.test.tsx
 new file mode 100644
@@ -777,12 +753,12 @@ index 000000000..3d54e7c6c
 +  projectNameDisabled: { color: theme.colors.foregroundMuted },
 +}));
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index 5000e1f06..5046892b7 100644
+index 8b7489f5f..33efee051 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -37,7 +37,16 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
+@@ -38,7 +38,16 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
  import { type GestureType } from "react-native-gesture-handler";
- import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
+ import { useSidebarWorkspaceRename } from "@/workspace-rename";
  import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
 -import { ExternalLink, Settings, MoreVertical, Plus, Trash2 } from "lucide-react-native";
 +import {
@@ -798,12 +774,16 @@ index 5000e1f06..5046892b7 100644
  import { NestableScrollContainer } from "react-native-draggable-flatlist";
  import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
  import type { DraggableListDragHandleProps } from "./draggable-list.types";
-@@ -155,2 +164,4 @@ import { useHostBadges } from "@/hosts/use-host-badges";
+@@ -153,6 +162,8 @@ import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
+ import type { HostBadgeModel } from "@/hosts/appearance";
+ import { useHostBadges } from "@/hosts/use-host-badges";
  import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 +import { ProjectGroupsSheet } from "@/components/project-groups-sheet";
 +import { useSidebarModel } from "@/components/sidebar/sidebar-model";
  import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
-@@ -167,6 +177,9 @@ const ThemedPlus = withUnistyles(Plus);
+ import { bySizing } from "@/components/ui/control-geometry";
+ 
+@@ -167,6 +178,9 @@ const ThemedPlus = withUnistyles(Plus);
  const ThemedMoreVertical = withUnistyles(MoreVertical);
  const ThemedTrash2 = withUnistyles(Trash2);
  const ThemedSettings = withUnistyles(Settings);
@@ -884,7 +864,7 @@ index 5000e1f06..5046892b7 100644
  interface ProjectHeaderRowProps {
    project: SidebarProjectEntry;
    displayName: string;
-@@ -2029,7 +2101,7 @@ export function SidebarWorkspaceList({
+@@ -2017,7 +2088,7 @@ export function SidebarWorkspaceList({
          supportsPinningByServerId={supportsPinningByServerId}
          onToggleWorkspacePin={onToggleWorkspacePin}
          onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
@@ -893,7 +873,7 @@ index 5000e1f06..5046892b7 100644
          sidebarFilterEmpty={sidebarFilterEmpty}
          parentGestureRef={parentGestureRef}
          dragGestureHostActive={dragGestureHostActive}
-@@ -2175,6 +2249,16 @@ function ProjectModeList({
+@@ -2163,6 +2234,16 @@ function ProjectModeList({
  }) {
    const { t } = useTranslation();
    const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
@@ -910,7 +890,7 @@ index 5000e1f06..5046892b7 100644
    const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
    const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
      new Map(),
-@@ -2404,6 +2487,35 @@ function ProjectModeList({
+@@ -2410,6 +2491,35 @@ function ProjectModeList({
      ],
    );
  
@@ -946,7 +926,7 @@ index 5000e1f06..5046892b7 100644
    const renderProject = useCallback(
      ({ item, drag, isActive, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) =>
        renderProjectBlock(item, { drag, isDragging: isActive, dragHandleProps }),
-@@ -2477,20 +2589,38 @@ function ProjectModeList({
+@@ -2483,20 +2593,38 @@ function ProjectModeList({
      projects.length === 0 ? (
        <SidebarProjectEmptyState onAddProject={onAddProject} onImportSession={onImportSession} />
      ) : (
@@ -999,7 +979,7 @@ index 5000e1f06..5046892b7 100644
      );
  
    const content = (
-@@ -2540,8 +2670,9 @@ function ProjectModeList({
+@@ -2546,8 +2674,9 @@ function ProjectModeList({
        {unpinnedProjects.length > 0 ||
        hasActiveHostFilter ||
        hasActiveProjectFilter ||
@@ -1011,7 +991,7 @@ index 5000e1f06..5046892b7 100644
          : null}
        {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
        {listFooterComponent}
-@@ -2549,28 +2680,37 @@ function ProjectModeList({
+@@ -2555,28 +2684,37 @@ function ProjectModeList({
    );
  
    return (
@@ -1071,7 +1051,7 @@ index 5000e1f06..5046892b7 100644
    );
  }
  
-@@ -2591,6 +2731,36 @@ const styles = StyleSheet.create((theme) => ({
+@@ -2599,6 +2737,36 @@ const styles = StyleSheet.create((theme) => ({
    projectListContainer: {
      width: "100%",
    },
@@ -1291,10 +1271,10 @@ index 0dac64b37..0e0761ee3 100644
    const existing = map.get(key);
    if (existing !== undefined) return existing;
 diff --git a/packages/app/src/runtime/directory-sync/index.ts b/packages/app/src/runtime/directory-sync/index.ts
-index 1ffb4fae5..08b50a4a1 100644
+index 0f539a2b1..c06bbdff9 100644
 --- a/packages/app/src/runtime/directory-sync/index.ts
 +++ b/packages/app/src/runtime/directory-sync/index.ts
-@@ -1026,6 +1026,7 @@ function legacyProjectDescriptorFromWorkspace(workspace: WorkspaceDescriptor): P
+@@ -1047,6 +1047,7 @@ function legacyProjectDescriptorFromWorkspace(workspace: WorkspaceDescriptor): P
      projectKey: null,
      projectDisplayName: workspace.projectDisplayName,
      projectCustomName: workspace.projectCustomName ?? null,
@@ -1303,10 +1283,10 @@ index 1ffb4fae5..08b50a4a1 100644
      projectKind: workspace.projectKind,
    };
 diff --git a/packages/app/src/runtime/directory-sync/workspace-replica.test.ts b/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
-index 792c00510..6d6c7b71f 100644
+index e3aa345d7..520b2b832 100644
 --- a/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
 +++ b/packages/app/src/runtime/directory-sync/workspace-replica.test.ts
-@@ -111,6 +111,7 @@ it("commits the authoritative snapshot before buffered project updates", () => {
+@@ -113,6 +113,7 @@ it("commits the authoritative snapshot before buffered project updates", () => {
            projectKey: "remote:github.com/acme/attached",
            projectDisplayName: "Renamed attached project",
            projectCustomName: "Personal name",
@@ -1314,7 +1294,7 @@ index 792c00510..6d6c7b71f 100644
            projectRootPath: "/moved/attached",
            projectKind: "directory",
          },
-@@ -132,11 +133,13 @@ it("commits the authoritative snapshot before buffered project updates", () => {
+@@ -134,11 +135,13 @@ it("commits the authoritative snapshot before buffered project updates", () => {
    expect(session?.workspaces.get(attachedMain.id)).toMatchObject({
      projectDisplayName: "Renamed attached project",
      projectCustomName: "Personal name",
@@ -1329,10 +1309,10 @@ index 792c00510..6d6c7b71f 100644
    });
    expect(session?.workspaces.has(removed.id)).toBe(false);
 diff --git a/packages/app/src/runtime/directory-sync/workspace-replica.ts b/packages/app/src/runtime/directory-sync/workspace-replica.ts
-index 8f21ebd21..5baa6751c 100644
+index b5a789546..253d19330 100644
 --- a/packages/app/src/runtime/directory-sync/workspace-replica.ts
 +++ b/packages/app/src/runtime/directory-sync/workspace-replica.ts
-@@ -159,6 +159,7 @@ export class WorkspaceDirectoryReplica {
+@@ -169,6 +169,7 @@ export class WorkspaceDirectoryReplica {
          projectDisplayName: project.projectDisplayName,
          projectCustomName: project.projectCustomName,
          projectCustomIconRevision: project.projectCustomIconRevision,
@@ -1341,10 +1321,10 @@ index 8f21ebd21..5baa6751c 100644
          projectKind: project.projectKind,
        };
 diff --git a/packages/app/src/runtime/replica-cache/index.ts b/packages/app/src/runtime/replica-cache/index.ts
-index 1032a663b..8b5f35f92 100644
+index efe2e1063..e3d41b062 100644
 --- a/packages/app/src/runtime/replica-cache/index.ts
 +++ b/packages/app/src/runtime/replica-cache/index.ts
-@@ -307,6 +307,7 @@ const StoredWorkspaceSchema = z.strictObject({
+@@ -313,6 +313,7 @@ const StoredWorkspaceSchema = z.strictObject({
    projectDisplayName: z.string(),
    projectCustomName: z.string().nullable(),
    projectCustomIconRevision: z.string().nullable(),
@@ -1352,7 +1332,7 @@ index 1032a663b..8b5f35f92 100644
    projectRootPath: z.string(),
    workspaceDirectory: z.string(),
    worktreeSlug: z.string().optional(),
-@@ -338,6 +339,7 @@ const StoredProjectSchema = z.strictObject({
+@@ -345,6 +346,7 @@ const StoredProjectSchema = z.strictObject({
    projectDisplayName: z.string(),
    projectCustomName: z.string().nullable(),
    projectCustomIconRevision: z.string().nullable(),
@@ -1360,7 +1340,7 @@ index 1032a663b..8b5f35f92 100644
    projectIconRevision: z.string().optional(),
    projectRootPath: z.string(),
    projectKind: z.enum(["git", "non_git", "directory"]),
-@@ -714,6 +716,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
+@@ -739,6 +741,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
      projectDisplayName: workspace.projectDisplayName,
      projectCustomName: workspace.projectCustomName ?? null,
      projectCustomIconRevision: workspace.projectCustomIconRevision ?? null,
@@ -1368,7 +1348,7 @@ index 1032a663b..8b5f35f92 100644
      projectRootPath: workspace.projectRootPath,
      workspaceDirectory: workspace.workspaceDirectory,
      worktreeSlug: workspace.worktreeSlug,
-@@ -755,6 +758,7 @@ function serializeProject(project: ProjectDescriptor): StoredProject {
+@@ -781,6 +784,7 @@ function serializeProject(project: ProjectDescriptor): StoredProject {
      projectDisplayName: project.projectDisplayName,
      projectCustomName: project.projectCustomName,
      projectCustomIconRevision: project.projectCustomIconRevision ?? null,
@@ -1377,10 +1357,10 @@ index 1032a663b..8b5f35f92 100644
      projectRootPath: project.projectRootPath,
      projectKind: project.projectKind,
 diff --git a/packages/app/src/stores/session-store.ts b/packages/app/src/stores/session-store.ts
-index b1312860a..5ba35d681 100644
+index 72ed4af90..f2a367531 100644
 --- a/packages/app/src/stores/session-store.ts
 +++ b/packages/app/src/stores/session-store.ts
-@@ -112,6 +112,7 @@ export interface WorkspaceDescriptor {
+@@ -121,6 +121,7 @@ export interface WorkspaceDescriptor {
    projectDisplayName: string;
    projectCustomName?: string | null;
    projectCustomIconRevision?: string | null;
@@ -1388,7 +1368,7 @@ index b1312860a..5ba35d681 100644
    projectRootPath: string;
    workspaceDirectory: string;
    worktreeSlug?: WorkspaceDescriptorPayload["worktreeSlug"];
-@@ -151,6 +152,7 @@ export function normalizeWorkspaceDescriptor(
+@@ -161,6 +162,7 @@ export function normalizeWorkspaceDescriptor(
      projectDisplayName: payload.projectDisplayName,
      projectCustomName: payload.projectCustomName ?? null,
      projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
@@ -1396,7 +1376,7 @@ index b1312860a..5ba35d681 100644
      projectRootPath: payload.projectRootPath,
      // Canonicalize the workspace directory once, at the store boundary, so every
      // consumer can read workspace.workspaceDirectory directly. Empty means "no
-@@ -185,6 +187,7 @@ export interface ProjectDescriptor {
+@@ -197,6 +199,7 @@ export interface ProjectDescriptor {
    projectDisplayName: string;
    projectCustomName: string | null;
    projectCustomIconRevision?: string | null;
@@ -1404,7 +1384,7 @@ index b1312860a..5ba35d681 100644
    projectIconRevision?: string;
    projectRootPath: string;
    projectKind: WorkspaceDescriptorPayload["projectKind"];
-@@ -199,6 +202,7 @@ export function normalizeProjectDescriptor(
+@@ -211,6 +214,7 @@ export function normalizeProjectDescriptor(
      projectDisplayName: payload.projectDisplayName,
      projectCustomName: payload.projectCustomName ?? null,
      projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
@@ -1413,10 +1393,10 @@ index b1312860a..5ba35d681 100644
      projectRootPath: payload.projectRootPath,
      projectKind: payload.projectKind,
 diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
-index 7454c8448..cc93171c4 100644
+index e677fbe3b..e88ad7b6f 100644
 --- a/packages/client/src/daemon-client.ts
 +++ b/packages/client/src/daemon-client.ts
-@@ -3511,6 +3511,21 @@ export class DaemonClient {
+@@ -3687,6 +3687,21 @@ export class DaemonClient {
      return { customName: payload.customName };
    }
  
@@ -1439,7 +1419,7 @@ index 7454c8448..cc93171c4 100644
      projectId: string,
      source: ProjectIconSource,
 diff --git a/packages/protocol/src/messages.test.ts b/packages/protocol/src/messages.test.ts
-index 373cef409..35f516da7 100644
+index 453c7aa1c..ad0e37915 100644
 --- a/packages/protocol/src/messages.test.ts
 +++ b/packages/protocol/src/messages.test.ts
 @@ -76,6 +76,20 @@ describe("project icon revision compatibility", () => {
@@ -1464,10 +1444,10 @@ index 373cef409..35f516da7 100644
  
  describe("workspace descriptor message compatibility", () => {
 diff --git a/packages/protocol/src/messages.ts b/packages/protocol/src/messages.ts
-index b5fa57191..3c75de477 100644
+index e62cf8357..0ba567e8b 100644
 --- a/packages/protocol/src/messages.ts
 +++ b/packages/protocol/src/messages.ts
-@@ -1012,6 +1012,14 @@ export const ProjectRenameRequestSchema = z.object({
+@@ -1064,6 +1064,14 @@ export const ProjectRenameRequestSchema = z.object({
    requestId: z.string(),
  });
  
@@ -1482,7 +1462,7 @@ index b5fa57191..3c75de477 100644
  export const ProjectIconSetRequestSchema = z.object({
    type: z.literal("project.icon.set.request"),
    projectId: z.string(),
-@@ -2148,6 +2156,17 @@ export const ProjectRenameResponseSchema = z.object({
+@@ -2266,6 +2274,17 @@ export const ProjectRenameResponseSchema = z.object({
    payload: ProjectRenameResponsePayloadSchema,
  });
  
@@ -1500,7 +1480,7 @@ index b5fa57191..3c75de477 100644
  export const ProjectIconSetResponseSchema = z.object({
    type: z.literal("project.icon.set.response"),
    payload: z.object({
-@@ -3324,6 +3343,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+@@ -3543,6 +3562,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
    CloseItemsRequestMessageSchema,
    UpdateAgentRequestMessageSchema,
    ProjectRenameRequestSchema,
@@ -1508,7 +1488,7 @@ index b5fa57191..3c75de477 100644
    ProjectIconSetRequestSchema,
    ProjectRemoveRequestSchema,
    WorkspaceTitleSetRequestSchema,
-@@ -3794,6 +3814,8 @@ export const ServerInfoStatusPayloadSchema = z
+@@ -4029,6 +4049,8 @@ export const ServerInfoStatusPayloadSchema = z
          projectRemove: z.boolean().optional(),
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: z.boolean().optional(),
@@ -1517,7 +1497,7 @@ index b5fa57191..3c75de477 100644
          // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
          worktreeRestore: z.boolean().optional(),
          // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
-@@ -4178,6 +4200,8 @@ export const WorkspaceDescriptorPayloadSchema = z
+@@ -4444,6 +4466,8 @@ export const WorkspaceDescriptorPayloadSchema = z
      // Identifies the project's stored custom icon; null means automatic.
      // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
      projectCustomIconRevision: z.string().nullable().optional(),
@@ -1526,7 +1506,7 @@ index b5fa57191..3c75de477 100644
      projectRootPath: z.string(),
      workspaceDirectory: z.string().optional(),
      // COMPAT(workspaceSetupObservation): added in v0.12.0, remove optional after 2027-04-19.
-@@ -4375,6 +4399,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
+@@ -4644,6 +4668,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
    projectCustomName: z.string().nullable().optional(),
    // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
    projectCustomIconRevision: z.string().nullable().optional(),
@@ -1535,7 +1515,7 @@ index b5fa57191..3c75de477 100644
    // Fingerprints the effective icon, including automatic discovery and the
    // absence of an icon. Clients may persist icon results against this value.
    // COMPAT(projectIconCache): added in v0.2.7, remove optional after 2027-02-12.
-@@ -7199,6 +7225,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+@@ -7554,6 +7580,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
    AgentRewindResponseMessageSchema,
    UpdateAgentResponseMessageSchema,
    ProjectRenameResponseSchema,
@@ -1544,10 +1524,10 @@ index b5fa57191..3c75de477 100644
    ProjectRemoveResponseSchema,
    WorkspaceTitleSetResponseSchema,
 diff --git a/packages/server/src/server/authorization/operation-permissions.ts b/packages/server/src/server/authorization/operation-permissions.ts
-index 0719e3d98..61f2c873f 100644
+index 2015316b0..17e6cc5d0 100644
 --- a/packages/server/src/server/authorization/operation-permissions.ts
 +++ b/packages/server/src/server/authorization/operation-permissions.ts
-@@ -153,6 +153,7 @@ const INBOUND_PERMISSION = {
+@@ -159,6 +159,7 @@ const INBOUND_PERMISSION = {
    "project.github.clone.request": "workspace.manage",
    "project.icon.get.request": "workspace.read",
    "project.icon.set.request": "workspace.manage",
@@ -1555,7 +1535,7 @@ index 0719e3d98..61f2c873f 100644
    "project.list.request": "workspace.read",
    "project.suggestions.request": "workspace.read",
    "project.remove.request": "workspace.manage",
-@@ -394,6 +395,7 @@ const OUTBOUND_PERMISSION = {
+@@ -412,6 +413,7 @@ const OUTBOUND_PERMISSION = {
    "project.github.clone.response": "workspace.manage",
    "project.icon.get.response": "workspace.read",
    "project.icon.set.response": "workspace.manage",
@@ -1564,10 +1544,10 @@ index 0719e3d98..61f2c873f 100644
    "project.suggestions.response": "workspace.read",
    "project.remove.response": "workspace.manage",
 diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
-index 1b9c2e973..e7a4a4865 100644
+index 83ed76746..1f36669ad 100644
 --- a/packages/server/src/server/session.test.ts
 +++ b/packages/server/src/server/session.test.ts
-@@ -1170,6 +1170,7 @@ describe("project command-center RPCs", () => {
+@@ -1171,6 +1171,7 @@ describe("project command-center RPCs", () => {
                projectId: "prj_created_directory",
                projectDisplayName: "new-project",
                projectCustomName: null,
@@ -1575,7 +1555,7 @@ index 1b9c2e973..e7a4a4865 100644
                projectCustomIconRevision: null,
                projectIconRevision: "automatic:none:v1",
                projectRootPath: directoryPath,
-@@ -5725,6 +5726,7 @@ test("project.list returns every active project descriptor", async () => {
+@@ -5757,6 +5758,7 @@ test("project.list returns every active project descriptor", async () => {
              projectKey: "remote:github.com/acme/app",
              projectDisplayName: "acme/app",
              projectCustomName: null,
@@ -1584,10 +1564,10 @@ index 1b9c2e973..e7a4a4865 100644
              projectIconRevision: "automatic:none:v1",
              projectRootPath: "/tmp/project-active",
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index 4b260f855..2d40bbdd6 100644
+index fcdbbae1e..7a22841ae 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -700,6 +700,10 @@ interface ClientActivity {
+@@ -731,6 +731,10 @@ interface ClientActivity {
    appVisibilityChangedAt: Date;
  }
  
@@ -1598,7 +1578,7 @@ index 4b260f855..2d40bbdd6 100644
  export class Session {
    private readonly connectedHostSession: ConnectedHostSession | null;
    private routed = false;
-@@ -3011,6 +3015,8 @@ export class Session {
+@@ -3181,6 +3185,8 @@ export class Session {
    }
  
    private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -1607,7 +1587,7 @@ index 4b260f855..2d40bbdd6 100644
      switch (msg.type) {
        case "fetch_agents_request":
          return this.handleFetchAgents(msg);
-@@ -3028,10 +3034,6 @@ export class Session {
+@@ -3198,10 +3204,6 @@ export class Session {
          return this.handleCloseItemsRequest(msg);
        case "update_agent_request":
          return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
@@ -1618,7 +1598,7 @@ index 4b260f855..2d40bbdd6 100644
        case "send_agent_message_request":
          return this.handleSendAgentMessageRequest(msg);
        case "wait_for_finish_request":
-@@ -3763,6 +3765,87 @@ export class Session {
+@@ -3948,6 +3950,87 @@ export class Session {
      }
    }
  
@@ -1706,7 +1686,7 @@ index 4b260f855..2d40bbdd6 100644
    private async handleProjectRenameRequest(
      projectId: string,
      customName: string | null,
-@@ -5834,6 +5911,7 @@ export class Session {
+@@ -6139,6 +6222,7 @@ export class Session {
          : workspace.projectId,
        projectCustomName: resolvedProjectRecord?.customName ?? null,
        projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
@@ -1714,7 +1694,7 @@ index 4b260f855..2d40bbdd6 100644
        projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
        workspaceDirectory: workspace.cwd,
        setupStatus: this.workspaceSetupObservation.status(workspace),
-@@ -5926,6 +6004,7 @@ export class Session {
+@@ -6234,6 +6318,7 @@ export class Session {
          : result.workspace.projectId,
        projectCustomName: projectRecord?.customName ?? null,
        projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
@@ -1722,7 +1702,7 @@ index 4b260f855..2d40bbdd6 100644
        projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
        workspaceDirectory: result.workspace.cwd,
        setupStatus: this.workspaceSetupObservation.status(result.workspace),
-@@ -6115,6 +6194,7 @@ export class Session {
+@@ -6425,6 +6510,7 @@ export class Session {
        projectDisplayName: resolveProjectDisplayName(project),
        projectCustomName: project.customName ?? null,
        projectCustomIconRevision: project.customIconRevision ?? null,
@@ -1731,10 +1711,10 @@ index 4b260f855..2d40bbdd6 100644
        projectRootPath: project.rootPath,
        projectKind: project.kind,
 diff --git a/packages/server/src/server/session.workspaces.test.ts b/packages/server/src/server/session.workspaces.test.ts
-index 6b1db3444..b6fc62c53 100644
+index f14a6e94d..907f0d5f5 100644
 --- a/packages/server/src/server/session.workspaces.test.ts
 +++ b/packages/server/src/server/session.workspaces.test.ts
-@@ -4131,6 +4131,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
+@@ -3999,6 +3999,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
        projectId: project.projectId,
        projectDisplayName: "repo",
        projectCustomName: null,
@@ -1742,7 +1722,7 @@ index 6b1db3444..b6fc62c53 100644
        projectCustomIconRevision: null,
        projectRootPath: REPO_CWD,
        projectKind: "git",
-@@ -8414,6 +8415,73 @@ test("project.rename.request stores customName and emits an updated workspace de
+@@ -8321,6 +8322,73 @@ test("project.rename.request stores customName and emits an updated workspace de
    });
  });
  
@@ -1817,10 +1797,10 @@ index 6b1db3444..b6fc62c53 100644
    const emitted: SessionOutboundMessage[] = [];
    const session = asTestSession(
 diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
-index 61014327f..5172394ef 100644
+index 793b8041e..f51953a24 100644
 --- a/packages/server/src/server/websocket-server.ts
 +++ b/packages/server/src/server/websocket-server.ts
-@@ -343,6 +343,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
+@@ -352,6 +352,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
        projectKey: input.projectKey ?? null,
        customName: null,
        customIconRevision: null,
@@ -1828,7 +1808,7 @@ index 61014327f..5172394ef 100644
        createdAt: input.timestamp,
        updatedAt: input.timestamp,
        archivedAt: null,
-@@ -2099,6 +2100,8 @@ export class VoiceAssistantWebSocketServer {
+@@ -2145,6 +2146,8 @@ export class VoiceAssistantWebSocketServer {
          projectRemove: true,
          // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
          projectAdd: true,
@@ -1838,10 +1818,10 @@ index 61014327f..5172394ef 100644
          projectList: true,
          // COMPAT(projectSuggestions): added in v0.14.1, remove gate after 2027-05-01.
 diff --git a/packages/server/src/server/workspace-directory.ts b/packages/server/src/server/workspace-directory.ts
-index 64f544e6f..f1a44c856 100644
+index ebab30916..95787fce0 100644
 --- a/packages/server/src/server/workspace-directory.ts
 +++ b/packages/server/src/server/workspace-directory.ts
-@@ -601,6 +601,7 @@ export class WorkspaceDirectory {
+@@ -603,6 +603,7 @@ export class WorkspaceDirectory {
          projectDisplayName: resolveProjectDisplayName(project),
          projectCustomName: project.customName ?? null,
          projectCustomIconRevision: project.customIconRevision ?? null,
@@ -1891,10 +1871,10 @@ index c26a2fe44..fe50fec5d 100644
      await workspaceRegistry.initialize();
      const mutations: WorkspaceMutation[] = [];
 diff --git a/packages/server/src/server/workspace-registry.ts b/packages/server/src/server/workspace-registry.ts
-index 474fc2482..cf6e1f4f6 100644
+index fd376cc14..9325e4d53 100644
 --- a/packages/server/src/server/workspace-registry.ts
 +++ b/packages/server/src/server/workspace-registry.ts
-@@ -43,6 +43,12 @@ const PersistedProjectRecordSchema = z.object({
+@@ -44,6 +44,12 @@ const PersistedProjectRecordSchema = z.object({
      .nullable()
      .optional()
      .transform((value) => value ?? null),
@@ -1907,7 +1887,7 @@ index 474fc2482..cf6e1f4f6 100644
    createdAt: z.string(),
    updatedAt: z.string(),
    archivedAt: z.string().nullable(),
-@@ -661,6 +667,7 @@ export function createPersistedProjectRecord(input: {
+@@ -665,6 +671,7 @@ export function createPersistedProjectRecord(input: {
    customName?: string | null;
    projectKey?: string | null;
    customIconRevision?: string | null;
@@ -1915,7 +1895,7 @@ index 474fc2482..cf6e1f4f6 100644
    createdAt: string;
    updatedAt: string;
    archivedAt?: string | null;
-@@ -670,6 +677,7 @@ export function createPersistedProjectRecord(input: {
+@@ -674,6 +681,7 @@ export function createPersistedProjectRecord(input: {
      customName: input.customName ?? null,
      projectKey: input.projectKey ?? null,
      customIconRevision: input.customIconRevision ?? null,
