@@ -108,7 +108,6 @@ jobs:
           tags="${IMAGE_BASE}:${AGENT}"
           tags="${tags}"$'\n'"${package_ref}"
 
-
           echo "package=${NPM_PACKAGE}" >> "$GITHUB_OUTPUT"
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
           echo "package_version_tag=${package_version_tag}" >> "$GITHUB_OUTPUT"
@@ -149,4 +148,3 @@ jobs:
       - name: Skip unchanged mod image
         if: steps.mod.outputs.should_build != 'true'
         run: echo "No publish needed for ${{ matrix.agent }}; package version ${{ steps.mod.outputs.package_version }} is already present."
-
