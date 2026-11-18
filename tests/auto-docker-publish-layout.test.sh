@@ -4,7 +4,7 @@ set -euo pipefail
 workflow_file="${WORKFLOW_FILE:-$(dirname "$0")/../.github/workflows/auto-docker-publish.yml}"
 prepare_job="$(sed -n '/^  prepare:/,/^  publish-ready-draft:/p' "${workflow_file}")"
 source_identity_step="$(sed -n '/^      - name: Record pre-sanitization source SHA/,/^      - name: Sanitize generated branch/p' <<<"${prepare_job}")"
-source_job="$(sed -n '/^  publish-source-image:/,/^  publish-mod-images:/p' "${workflow_file}")"
+source_job="$(sed -n '/^  publish-source-image:/,/^  build-linux:/p' "${workflow_file}")"
 
 assert_prepare_contains() {
   local expected="$1"
@@ -352,7 +352,7 @@ for mode in release prerelease; do
   assert_equals 'clients_only=true' "$(grep '^clients_only=' "${metadata_output}")" 'manual clients-only scope'
   assert_equals 'publish_clients=true' "$(grep '^publish_clients=' "${metadata_output}")" 'manual client publishing'
 done
-for job in publish-source-image publish-mod-images; do
+for job in publish-source-image; do
   condition="$(job_condition "${job}")"
   if [[ "${condition}" != *"needs.prepare.outputs.clients_only != 'true'"* ]]; then
     printf '%s must skip client-only schedules\n' "${job}" >&2
