@@ -37,7 +37,7 @@ index 935683bb0..a4354b10d 100644
      () => ({ configRef, getDirectorySuggestions }),
      [getDirectorySuggestions],
 diff --git a/packages/app/src/components/markdown/renderers.web.tsx b/packages/app/src/components/markdown/renderers.web.tsx
-index dd1b23f09..9db2e2f3e 100644
+index 8895e8a9b..01aec89a6 100644
 --- a/packages/app/src/components/markdown/renderers.web.tsx
 +++ b/packages/app/src/components/markdown/renderers.web.tsx
 @@ -1,5 +1,12 @@
@@ -54,9 +54,9 @@ index dd1b23f09..9db2e2f3e 100644
  import type {
    CodeBlockRendererProps,
    LinkRendererProps,
-@@ -50,11 +57,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
-     }),
-     [anchorProps.style, hovered],
+@@ -60,11 +67,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
+         : anchorProps,
+     [anchorProps, recognized],
    );
 +  const onClick = anchorProps.onClick;
 +  const handleAuxClick = useCallback(
@@ -67,7 +67,7 @@ index dd1b23f09..9db2e2f3e 100644
 +  );
    const anchor = (
      <a
-       {...anchorProps}
+       {...copyAnchorProps}
        href={forgeUrl ?? anchorProps.href}
        style={anchorStyle}
 +      onAuxClick={handleAuxClick}
@@ -75,7 +75,7 @@ index dd1b23f09..9db2e2f3e 100644
        onMouseLeave={handleMouseLeave}
      >
 diff --git a/packages/app/src/components/message.tsx b/packages/app/src/components/message.tsx
-index f119e55e9..afa8fa74c 100644
+index 99639fff4..93d90a984 100644
 --- a/packages/app/src/components/message.tsx
 +++ b/packages/app/src/components/message.tsx
 @@ -1,6 +1,10 @@
@@ -88,8 +88,8 @@ index f119e55e9..afa8fa74c 100644
 +import { openExternalUrl } from "@/utils/open-external-url";
  import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
  import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
- import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
-@@ -16,7 +20,7 @@ import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mut
+ import { TurnMetricsButton } from "@/components/turn-metrics";
+@@ -21,7 +25,7 @@ import {
  import { TaskListRow } from "@/components/task-list-row";
  import { LoadingSpinner } from "@/components/ui/loading-spinner";
  import { useIsCompactFormFactor } from "@/constants/layout";
@@ -98,7 +98,7 @@ index f119e55e9..afa8fa74c 100644
  import { useRevealedText, type MarkdownPhase } from "@/hooks/use-revealed-text";
  import { ICON_SIZE, type Theme } from "@/styles/theme";
  import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-@@ -1193,6 +1197,20 @@ export const AssistantMessage = memo(function AssistantMessage({
+@@ -1209,6 +1213,20 @@ export const AssistantMessage = memo(function AssistantMessage({
    phase,
  }: AssistantMessageProps) {
    const { t } = useTranslation();
@@ -119,7 +119,7 @@ index f119e55e9..afa8fa74c 100644
    const renderedMessage = useMemo(
      () =>
        renderFullContent ? { text: message, capped: false } : capAssistantMessageForRender(message),
-@@ -1243,6 +1261,7 @@ export const AssistantMessage = memo(function AssistantMessage({
+@@ -1259,6 +1277,7 @@ export const AssistantMessage = memo(function AssistantMessage({
          streaming={phase !== "complete" || revealedMessage.length < renderedMessage.text.length}
          client={client}
          workspaceRoot={workspaceRoot}
@@ -128,7 +128,7 @@ index f119e55e9..afa8fa74c 100644
        />
        {fullMessageByteLength !== null ? (
 diff --git a/packages/app/src/hooks/use-settings/storage.test.ts b/packages/app/src/hooks/use-settings/storage.test.ts
-index 8f426f9f2..282fc1141 100644
+index 6400e15fc..1377f0dde 100644
 --- a/packages/app/src/hooks/use-settings/storage.test.ts
 +++ b/packages/app/src/hooks/use-settings/storage.test.ts
 @@ -80,6 +80,24 @@ describe("loadAppSettingsFromStorage", () => {
@@ -157,10 +157,10 @@ index 8f426f9f2..282fc1141 100644
      const stored = {
        theme: "dark",
 diff --git a/packages/app/src/hooks/use-settings/storage.ts b/packages/app/src/hooks/use-settings/storage.ts
-index f04b7b6d9..1ef720905 100644
+index 11ba437dd..cf65ffc16 100644
 --- a/packages/app/src/hooks/use-settings/storage.ts
 +++ b/packages/app/src/hooks/use-settings/storage.ts
-@@ -83,6 +83,7 @@ export interface AppSettings {
+@@ -86,6 +86,7 @@ export interface AppSettings {
    language: AppLanguage;
    sendBehavior: SendBehavior;
    serviceUrlBehavior: ServiceUrlBehavior;
@@ -168,7 +168,7 @@ index f04b7b6d9..1ef720905 100644
    terminalScrollbackLines: number;
    uiFontFamily: string; // "" = platform default UI stack
    monoFontFamily: string; // "" = platform default mono stack
-@@ -146,6 +147,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+@@ -149,6 +150,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
    language: "system",
    sendBehavior: "steer",
    serviceUrlBehavior: "ask",
@@ -176,7 +176,7 @@ index f04b7b6d9..1ef720905 100644
    terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
    uiFontFamily: "",
    monoFontFamily: "",
-@@ -227,6 +229,7 @@ const StoredAppSettingsSchema = z
+@@ -230,6 +232,7 @@ const StoredAppSettingsSchema = z
        .catch("system"),
      sendBehavior: z.enum(["interrupt", "steer", "queue"]).catch("steer"),
      serviceUrlBehavior: z.enum(["ask", "in-app", "external"]).catch("ask"),
@@ -185,10 +185,10 @@ index f04b7b6d9..1ef720905 100644
        MIN_TERMINAL_SCROLLBACK_LINES,
        MAX_TERMINAL_SCROLLBACK_LINES,
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index 47b5f1178..e0ac8fa40 100644
+index 16e3e1c5a..2af4e0520 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -2362,6 +2362,11 @@ export const en = {
+@@ -2404,6 +2404,11 @@ export const en = {
            side: "On the side",
            explorer: "Explorer sidebar",
          },
@@ -201,10 +201,10 @@ index 47b5f1178..e0ac8fa40 100644
            explorerFiles: {
              label: "Clicking a file in the Explorer sidebar",
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index 7a9c947f6..627aad9c3 100644
+index 1c17897ee..ec71be11e 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -2303,7 +2303,17 @@ export const zhCN: TranslationResources = {
+@@ -2345,7 +2345,17 @@ export const zhCN: TranslationResources = {
        diagnostics: "诊断",
        about: "关于",
      },
@@ -281,10 +281,10 @@ index fddc3e1f4..2b75cfbea 100644
      </SettingsSection>
    );
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index 0c30fb5bf..34e3600f9 100644
+index ee2ce2ee0..44ba3d752 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -3903,6 +3903,7 @@ function WorkspaceScreenContent({
+@@ -3837,6 +3837,7 @@ function WorkspaceScreenContent({
          serverId={normalizedServerId}
          workspaceRoot={workspaceDirectory ?? undefined}
          onOpenWorkspaceFile={openMarkdownPath}
