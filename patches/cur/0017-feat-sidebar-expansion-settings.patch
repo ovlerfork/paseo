@@ -6,7 +6,7 @@ Subject: [PATCH] Configure sidebar expansion around task activity
 Collapse idle sidebar sections and expand running task branches by default. Preserve manual choices until activity changes, and expose persistent expansion settings from the Workspaces header and new project group context menus.
 
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index ffe38f26b..2cee55470 100644
+index 18ba331ac..00bd0a29a 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
 @@ -54,6 +54,8 @@ import {
@@ -18,7 +18,7 @@ index ffe38f26b..2cee55470 100644
  import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
  import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
  import { SidebarToastRegion } from "@/components/sidebar/sidebar-toast-region";
-@@ -955,38 +957,58 @@ function DesktopSidebar({
+@@ -958,38 +960,58 @@ function DesktopSidebar({
  }
  
  function WorkspacesSectionHeader({ onCreateProjectGroup }: { onCreateProjectGroup?: () => void }) {
@@ -103,10 +103,10 @@ index ffe38f26b..2cee55470 100644
  }
  
 diff --git a/packages/app/src/components/sidebar-workspace-list.tsx b/packages/app/src/components/sidebar-workspace-list.tsx
-index 1ec7e16ac..8cc1fac0c 100644
+index b9c214e34..6333af69f 100644
 --- a/packages/app/src/components/sidebar-workspace-list.tsx
 +++ b/packages/app/src/components/sidebar-workspace-list.tsx
-@@ -2541,15 +2541,12 @@ function ProjectModeList({
+@@ -2638,15 +2638,12 @@ function ProjectModeList({
      }
      return counts;
    }, [projects, groupedProjects.groups, workspaceEntriesByKey]);
@@ -437,10 +437,10 @@ index 9f7278943..ad8c82856 100644
      container?.remove();
      container = null;
 diff --git a/packages/app/src/i18n/resources/ar.ts b/packages/app/src/i18n/resources/ar.ts
-index 51250d04b..31576e6c2 100644
+index 53b12fdd3..e1e33ffba 100644
 --- a/packages/app/src/i18n/resources/ar.ts
 +++ b/packages/app/src/i18n/resources/ar.ts
-@@ -1259,6 +1259,7 @@ export const ar: TranslationResources = {
+@@ -1291,6 +1291,7 @@ export const ar: TranslationResources = {
          all: "كل المشاريع",
        },
      },
@@ -449,10 +449,10 @@ index 51250d04b..31576e6c2 100644
        title: "لا توجد مساحات عمل مطابقة",
        description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index f7452c2fc..47b5f1178 100644
+index e5b0c98ae..e9605f85a 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -1269,6 +1269,18 @@ export const en = {
+@@ -1302,6 +1302,18 @@ export const en = {
          all: "All projects",
        },
      },
@@ -472,10 +472,10 @@ index f7452c2fc..47b5f1178 100644
        title: "No workspaces match",
        description: "Change or clear the sidebar filters to see workspaces.",
 diff --git a/packages/app/src/i18n/resources/es.ts b/packages/app/src/i18n/resources/es.ts
-index 6f3c05183..14ef5bf83 100644
+index 61dab7713..0a3109a78 100644
 --- a/packages/app/src/i18n/resources/es.ts
 +++ b/packages/app/src/i18n/resources/es.ts
-@@ -1295,6 +1295,7 @@ export const es: TranslationResources = {
+@@ -1328,6 +1328,7 @@ export const es: TranslationResources = {
          all: "Todos los proyectos",
        },
      },
@@ -484,10 +484,10 @@ index 6f3c05183..14ef5bf83 100644
        title: "Ningún espacio de trabajo coincide",
        description: "Cambia o borra los filtros de la barra lateral para ver espacios de trabajo.",
 diff --git a/packages/app/src/i18n/resources/fr.ts b/packages/app/src/i18n/resources/fr.ts
-index 022bc3dd4..f9f4750b7 100644
+index 3290403c5..d10379af8 100644
 --- a/packages/app/src/i18n/resources/fr.ts
 +++ b/packages/app/src/i18n/resources/fr.ts
-@@ -1288,6 +1288,7 @@ export const fr: TranslationResources = {
+@@ -1320,6 +1320,7 @@ export const fr: TranslationResources = {
          all: "Tous les projets",
        },
      },
@@ -496,10 +496,10 @@ index 022bc3dd4..f9f4750b7 100644
        title: "Aucun espace de travail ne correspond",
        description:
 diff --git a/packages/app/src/i18n/resources/ja.ts b/packages/app/src/i18n/resources/ja.ts
-index 75f2d5579..e669dd1c5 100644
+index c1d8bb192..b4ef5a289 100644
 --- a/packages/app/src/i18n/resources/ja.ts
 +++ b/packages/app/src/i18n/resources/ja.ts
-@@ -1272,6 +1272,7 @@ export const ja: TranslationResources = {
+@@ -1305,6 +1305,7 @@ export const ja: TranslationResources = {
          all: "すべてのプロジェクト",
        },
      },
@@ -508,10 +508,10 @@ index 75f2d5579..e669dd1c5 100644
        title: "一致するワークスペースがありません",
        description:
 diff --git a/packages/app/src/i18n/resources/ko.ts b/packages/app/src/i18n/resources/ko.ts
-index d4ec87ad8..cb3b9c0a2 100644
+index 5d2fb0715..e0539ec4d 100644
 --- a/packages/app/src/i18n/resources/ko.ts
 +++ b/packages/app/src/i18n/resources/ko.ts
-@@ -1266,6 +1266,7 @@ export const ko: TranslationResources = {
+@@ -1298,6 +1298,7 @@ export const ko: TranslationResources = {
          all: "모든 프로젝트",
        },
      },
@@ -520,10 +520,10 @@ index d4ec87ad8..cb3b9c0a2 100644
        title: "일치하는 워크스페이스가 없습니다",
        description: "워크스페이스를 보려면 사이드바 필터를 변경하거나 지우세요.",
 diff --git a/packages/app/src/i18n/resources/pt-BR.ts b/packages/app/src/i18n/resources/pt-BR.ts
-index 54516fc2d..c4cfd3966 100644
+index d075af845..29f62f633 100644
 --- a/packages/app/src/i18n/resources/pt-BR.ts
 +++ b/packages/app/src/i18n/resources/pt-BR.ts
-@@ -1285,6 +1285,7 @@ export const ptBR: TranslationResources = {
+@@ -1318,6 +1318,7 @@ export const ptBR: TranslationResources = {
          all: "Todos os projetos",
        },
      },
@@ -532,10 +532,10 @@ index 54516fc2d..c4cfd3966 100644
        title: "Nenhum espaço de trabalho corresponde",
        description: "Altere ou limpe os filtros da barra lateral para ver espaços de trabalho.",
 diff --git a/packages/app/src/i18n/resources/ru.ts b/packages/app/src/i18n/resources/ru.ts
-index 9ee2f1746..06354124d 100644
+index 5b1a57ba0..decdba7b4 100644
 --- a/packages/app/src/i18n/resources/ru.ts
 +++ b/packages/app/src/i18n/resources/ru.ts
-@@ -1276,6 +1276,7 @@ export const ru: TranslationResources = {
+@@ -1310,6 +1310,7 @@ export const ru: TranslationResources = {
          all: "Все проекты",
        },
      },
@@ -544,10 +544,10 @@ index 9ee2f1746..06354124d 100644
        title: "Нет подходящих рабочих пространств",
        description:
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index e2b676283..7a9c947f6 100644
+index 7fde8331a..d19fadec1 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -1251,6 +1251,18 @@ export const zhCN: TranslationResources = {
+@@ -1283,6 +1283,18 @@ export const zhCN: TranslationResources = {
          all: "所有项目",
        },
      },

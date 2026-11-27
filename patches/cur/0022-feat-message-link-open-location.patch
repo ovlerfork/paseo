@@ -5,20 +5,20 @@ Subject: [PATCH] Choose where AI message links open
 
 
 diff --git a/packages/app/src/assistant-file-links/provider.tsx b/packages/app/src/assistant-file-links/provider.tsx
-index 935683bb0..a4354b10d 100644
+index 3713c289e..8acf57230 100644
 --- a/packages/app/src/assistant-file-links/provider.tsx
 +++ b/packages/app/src/assistant-file-links/provider.tsx
-@@ -25,6 +25,7 @@ export interface AssistantFileLinkResolverConfig {
-   relativePathBase?: string;
+@@ -26,6 +26,7 @@ export interface AssistantFileLinkResolverConfig {
    onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
+   onOpenBrowserUrl?: (url: string) => void;
    toast?: ToastApi | null;
 +  onOpenUrlInBrowserTab?: (url: string) => void;
  }
  
  export interface AssistantFileLinkResolverProviderProps extends AssistantFileLinkResolverConfig {
-@@ -58,8 +59,10 @@ export function AssistantFileLinkResolverProvider({
-   relativePathBase,
+@@ -60,8 +61,10 @@ export function AssistantFileLinkResolverProvider({
    onOpenWorkspaceFile,
+   onOpenBrowserUrl,
    toast,
 +  onOpenUrlInBrowserTab,
    children,
@@ -27,7 +27,7 @@ index 935683bb0..a4354b10d 100644
    const configRef = useRef<AssistantFileLinkResolverConfig>({
      client,
      serverId,
-@@ -87,6 +90,8 @@ export function AssistantFileLinkResolverProvider({
+@@ -91,6 +94,8 @@ export function AssistantFileLinkResolverProvider({
      return { entries: result.entries, error: result.error };
    }, []);
  
@@ -37,7 +37,7 @@ index 935683bb0..a4354b10d 100644
      () => ({ configRef, getDirectorySuggestions }),
      [getDirectorySuggestions],
 diff --git a/packages/app/src/components/markdown/renderers.web.tsx b/packages/app/src/components/markdown/renderers.web.tsx
-index 8895e8a9b..01aec89a6 100644
+index f61fcf6ab..055c0e3ce 100644
 --- a/packages/app/src/components/markdown/renderers.web.tsx
 +++ b/packages/app/src/components/markdown/renderers.web.tsx
 @@ -1,5 +1,12 @@
@@ -54,7 +54,7 @@ index 8895e8a9b..01aec89a6 100644
  import type {
    CodeBlockRendererProps,
    LinkRendererProps,
-@@ -60,11 +67,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
+@@ -61,11 +68,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
          : anchorProps,
      [anchorProps, recognized],
    );
@@ -128,10 +128,10 @@ index 99639fff4..93d90a984 100644
        />
        {fullMessageByteLength !== null ? (
 diff --git a/packages/app/src/hooks/use-settings/storage.test.ts b/packages/app/src/hooks/use-settings/storage.test.ts
-index 6400e15fc..1377f0dde 100644
+index e5d97e27b..232441819 100644
 --- a/packages/app/src/hooks/use-settings/storage.test.ts
 +++ b/packages/app/src/hooks/use-settings/storage.test.ts
-@@ -80,6 +80,24 @@ describe("loadAppSettingsFromStorage", () => {
+@@ -81,6 +81,24 @@ describe("loadAppSettingsFromStorage", () => {
      expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
    });
  
@@ -157,10 +157,10 @@ index 6400e15fc..1377f0dde 100644
      const stored = {
        theme: "dark",
 diff --git a/packages/app/src/hooks/use-settings/storage.ts b/packages/app/src/hooks/use-settings/storage.ts
-index 11ba437dd..cf65ffc16 100644
+index 4a177909d..1182ac3af 100644
 --- a/packages/app/src/hooks/use-settings/storage.ts
 +++ b/packages/app/src/hooks/use-settings/storage.ts
-@@ -86,6 +86,7 @@ export interface AppSettings {
+@@ -91,6 +91,7 @@ export interface AppSettings {
    language: AppLanguage;
    sendBehavior: SendBehavior;
    serviceUrlBehavior: ServiceUrlBehavior;
@@ -168,7 +168,7 @@ index 11ba437dd..cf65ffc16 100644
    terminalScrollbackLines: number;
    uiFontFamily: string; // "" = platform default UI stack
    monoFontFamily: string; // "" = platform default mono stack
-@@ -149,6 +150,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+@@ -155,6 +156,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
    language: "system",
    sendBehavior: "steer",
    serviceUrlBehavior: "ask",
@@ -176,7 +176,7 @@ index 11ba437dd..cf65ffc16 100644
    terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
    uiFontFamily: "",
    monoFontFamily: "",
-@@ -230,6 +232,7 @@ const StoredAppSettingsSchema = z
+@@ -237,6 +239,7 @@ const StoredAppSettingsSchema = z
        .catch("system"),
      sendBehavior: z.enum(["interrupt", "steer", "queue"]).catch("steer"),
      serviceUrlBehavior: z.enum(["ask", "in-app", "external"]).catch("ask"),
@@ -185,10 +185,10 @@ index 11ba437dd..cf65ffc16 100644
        MIN_TERMINAL_SCROLLBACK_LINES,
        MAX_TERMINAL_SCROLLBACK_LINES,
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index 16e3e1c5a..2af4e0520 100644
+index e9605f85a..2252c2687 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
-@@ -2404,6 +2404,11 @@ export const en = {
+@@ -2492,6 +2492,11 @@ export const en = {
            side: "On the side",
            explorer: "Explorer sidebar",
          },
@@ -201,12 +201,12 @@ index 16e3e1c5a..2af4e0520 100644
            explorerFiles: {
              label: "Clicking a file in the Explorer sidebar",
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index 1c17897ee..ec71be11e 100644
+index d19fadec1..0ae7dd823 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -2345,7 +2345,17 @@ export const zhCN: TranslationResources = {
-       diagnostics: "诊断",
-       about: "关于",
+@@ -2430,7 +2430,17 @@ export const zhCN: TranslationResources = {
+       addRoute: "添加路径",
+       activeRoute: "当前使用",
      },
 -    layout: en.settings.layout,
 +    layout: {
@@ -281,13 +281,13 @@ index fddc3e1f4..2b75cfbea 100644
      </SettingsSection>
    );
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index ee2ce2ee0..44ba3d752 100644
+index 79ebaf2f5..953caa497 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -3837,6 +3837,7 @@ function WorkspaceScreenContent({
-         serverId={normalizedServerId}
+@@ -3866,6 +3866,7 @@ function WorkspaceScreenContent({
          workspaceRoot={workspaceDirectory ?? undefined}
          onOpenWorkspaceFile={openMarkdownPath}
+         onOpenBrowserUrl={handleOpenUrlInBrowserTab}
 +        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
          toast={toast}
        >
