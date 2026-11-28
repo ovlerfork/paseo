@@ -1309,17 +1309,15 @@ index e3aa345d7..520b2b832 100644
    });
    expect(session?.workspaces.has(removed.id)).toBe(false);
 diff --git a/packages/app/src/runtime/directory-sync/workspace-replica.ts b/packages/app/src/runtime/directory-sync/workspace-replica.ts
-index b5a789546..253d19330 100644
+index b5a7895467d1..dc8ac270390c 100644
 --- a/packages/app/src/runtime/directory-sync/workspace-replica.ts
 +++ b/packages/app/src/runtime/directory-sync/workspace-replica.ts
-@@ -169,6 +169,7 @@ export class WorkspaceDirectoryReplica {
-         projectDisplayName: project.projectDisplayName,
-         projectCustomName: project.projectCustomName,
-         projectCustomIconRevision: project.projectCustomIconRevision,
-+        projectGroupName: project.projectGroupName,
-         projectRootPath: project.projectRootPath,
-         projectKind: project.projectKind,
-       };
+@@ -164,3 +164,4 @@ export class WorkspaceDirectoryReplica {
+     for (const workspaceId of this.workspaceIdsByProject.get(project.projectId) ?? []) {
+-      const workspace = this.workspaces.get(workspaceId);
++      const previous = this.workspaces.get(workspaceId);
++      const workspace = previous && { ...previous, projectGroupName: project.projectGroupName };
+       if (!workspace) continue;
 diff --git a/packages/app/src/runtime/replica-cache/index.ts b/packages/app/src/runtime/replica-cache/index.ts
 index ef65721e2..8e9a38f43 100644
 --- a/packages/app/src/runtime/replica-cache/index.ts
@@ -1392,11 +1390,11 @@ index 49c70103b..7bf8301d2 100644
      projectIconRevision: payload.projectIconRevision,
      projectRootPath: payload.projectRootPath,
      projectKind: payload.projectKind,
-diff --git a/packages/client/src/daemon-client.ts b/packages/client/src/daemon-client.ts
-index 4fac27d42..b9815f519 100644
---- a/packages/client/src/daemon-client.ts
-+++ b/packages/client/src/daemon-client.ts
-@@ -3732,6 +3732,21 @@ export class DaemonClient {
+diff --git a/packages/client/src/daemon-client-core.ts b/packages/client/src/daemon-client-core.ts
+index 852a369fd24f..49e4f8cecda2 100644
+--- a/packages/client/src/daemon-client-core.ts
++++ b/packages/client/src/daemon-client-core.ts
+@@ -3758,6 +3758,21 @@ export class DaemonClientCore {
      return { customName: payload.customName };
    }
  
@@ -1564,20 +1562,20 @@ index 715d3a588..bd473a779 100644
              projectIconRevision: "automatic:none:v1",
              projectRootPath: "/tmp/project-active",
 diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
-index a763f5988..52b68054c 100644
+index a763f5988..9fce4e7b8 100644
 --- a/packages/server/src/server/session.ts
 +++ b/packages/server/src/server/session.ts
-@@ -768,6 +768,10 @@ function resolveAgentSubscriptionSnapshotIds(
-   return payload.entries.map((entry) => entry.agent.id);
+@@ -749,6 +749,10 @@ function workspaceLabelErrorCode(error: unknown): string {
+   return "workspace_label_failed";
  }
  
 +function projectGroupName(project: PersistedProjectRecord | null | undefined): string | null {
 +  return project?.groupName ?? null;
 +}
 +
- export class Session {
-   private readonly connectedHostSession: ConnectedHostSession | null;
-   private routed = false;
+ interface ClientActivity {
+   deviceType: "web" | "mobile";
+   focusedAgentId: string | null;
 @@ -3336,6 +3340,8 @@ export class Session {
    }
  
