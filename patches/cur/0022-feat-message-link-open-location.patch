@@ -8,17 +8,13 @@ diff --git a/packages/app/src/assistant-file-links/provider.tsx b/packages/app/s
 index 3713c289e..8acf57230 100644
 --- a/packages/app/src/assistant-file-links/provider.tsx
 +++ b/packages/app/src/assistant-file-links/provider.tsx
-@@ -26,6 +26,7 @@ export interface AssistantFileLinkResolverConfig {
-   onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
-   onOpenBrowserUrl?: (url: string) => void;
+@@ -27,4 +27,5 @@ export interface AssistantFileLinkResolverConfig {
    toast?: ToastApi | null;
 +  onOpenUrlInBrowserTab?: (url: string) => void;
  }
  
  export interface AssistantFileLinkResolverProviderProps extends AssistantFileLinkResolverConfig {
-@@ -60,8 +61,10 @@ export function AssistantFileLinkResolverProvider({
-   onOpenWorkspaceFile,
-   onOpenBrowserUrl,
+@@ -62,6 +63,8 @@ export function AssistantFileLinkResolverProvider({
    toast,
 +  onOpenUrlInBrowserTab,
    children,
@@ -37,48 +33,22 @@ index 3713c289e..8acf57230 100644
      () => ({ configRef, getDirectorySuggestions }),
      [getDirectorySuggestions],
 diff --git a/packages/app/src/components/markdown/renderers.web.tsx b/packages/app/src/components/markdown/renderers.web.tsx
-index f61fcf6ab..055c0e3ce 100644
+index f61fcf6ab..f95e7645f 100644
 --- a/packages/app/src/components/markdown/renderers.web.tsx
 +++ b/packages/app/src/components/markdown/renderers.web.tsx
-@@ -1,5 +1,12 @@
- import { Text } from "react-native";
--import { forwardRef, useCallback, useMemo, useState, type ComponentProps } from "react";
-+import {
-+  forwardRef,
-+  useCallback,
-+  useMemo,
-+  useState,
-+  type ComponentProps,
-+  type MouseEvent,
-+} from "react";
- import type {
-   CodeBlockRendererProps,
-   LinkRendererProps,
-@@ -61,11 +68,19 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
-         : anchorProps,
-     [anchorProps, recognized],
-   );
-+  const onClick = anchorProps.onClick;
-+  const handleAuxClick = useCallback(
-+    (event: MouseEvent<HTMLAnchorElement>) => {
-+      if (event.button === 1) onClick?.(event);
-+    },
-+    [onClick],
-+  );
-   const anchor = (
-     <a
-       {...copyAnchorProps}
+@@ -65,4 +65,7 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
        href={forgeUrl ?? anchorProps.href}
        style={anchorStyle}
-+      onAuxClick={handleAuxClick}
++      onAuxClick={(event) => {
++        if (event.button === 1) anchorProps.onClick?.(event);
++      }}
        onMouseEnter={handleMouseEnter}
        onMouseLeave={handleMouseLeave}
-     >
 diff --git a/packages/app/src/components/message.tsx b/packages/app/src/components/message.tsx
 index 99639fff4..93d90a984 100644
 --- a/packages/app/src/components/message.tsx
 +++ b/packages/app/src/components/message.tsx
-@@ -1,6 +1,10 @@
+@@ -1,4 +1,8 @@
  import { useDisclosureHold } from "@/agent-stream/disclosure";
  import { MessagePreview, MessageSender } from "@/components/user-message";
  import { useStableEvent } from "@/hooks/use-stable-event";
@@ -87,8 +57,6 @@ index 99639fff4..93d90a984 100644
 +import { isHttpUrl } from "@/utils/http-url";
 +import { openExternalUrl } from "@/utils/open-external-url";
  import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
- import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
- import { TurnMetricsButton } from "@/components/turn-metrics";
 @@ -21,7 +25,7 @@ import {
  import { TaskListRow } from "@/components/task-list-row";
  import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -185,7 +153,7 @@ index 4a177909d..1182ac3af 100644
        MIN_TERMINAL_SCROLLBACK_LINES,
        MAX_TERMINAL_SCROLLBACK_LINES,
 diff --git a/packages/app/src/i18n/resources/en.ts b/packages/app/src/i18n/resources/en.ts
-index e9605f85a..2252c2687 100644
+index 4e564eb69..c32b0a6df 100644
 --- a/packages/app/src/i18n/resources/en.ts
 +++ b/packages/app/src/i18n/resources/en.ts
 @@ -2492,6 +2492,11 @@ export const en = {
@@ -201,13 +169,10 @@ index e9605f85a..2252c2687 100644
            explorerFiles: {
              label: "Clicking a file in the Explorer sidebar",
 diff --git a/packages/app/src/i18n/resources/zh-CN.ts b/packages/app/src/i18n/resources/zh-CN.ts
-index d19fadec1..0ae7dd823 100644
+index 458ff50a2..f3241eed4 100644
 --- a/packages/app/src/i18n/resources/zh-CN.ts
 +++ b/packages/app/src/i18n/resources/zh-CN.ts
-@@ -2430,7 +2430,17 @@ export const zhCN: TranslationResources = {
-       addRoute: "添加路径",
-       activeRoute: "当前使用",
-     },
+@@ -2433,4 +2433,14 @@ export const zhCN: TranslationResources = {
 -    layout: en.settings.layout,
 +    layout: {
 +      ...en.settings.layout,
@@ -281,14 +246,11 @@ index fddc3e1f4..2b75cfbea 100644
      </SettingsSection>
    );
 diff --git a/packages/app/src/screens/workspace/workspace-screen.tsx b/packages/app/src/screens/workspace/workspace-screen.tsx
-index 79ebaf2f5..953caa497 100644
+index 79ebaf2f5..0ef5befe3 100644
 --- a/packages/app/src/screens/workspace/workspace-screen.tsx
 +++ b/packages/app/src/screens/workspace/workspace-screen.tsx
-@@ -3866,6 +3866,7 @@ function WorkspaceScreenContent({
-         workspaceRoot={workspaceDirectory ?? undefined}
-         onOpenWorkspaceFile={openMarkdownPath}
-         onOpenBrowserUrl={handleOpenUrlInBrowserTab}
-+        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+@@ -3869,3 +3869,4 @@ function WorkspaceScreenContent({
          toast={toast}
++        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
        >
          {renderedWorkspaceScreen}
